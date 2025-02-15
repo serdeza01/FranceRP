@@ -41,14 +41,16 @@ client.once('ready', async () => {
 async function updatePresenceEmbed() {
   try {
     const availableStaff = [];
-    const guild = await client.guilds.fetch(CHANNEL_ID);
+    
+    const channel = await client.channels.fetch(CHANNEL_ID);
+    const guild = channel.guild; // Récupération du serveur à partir du salon
 
     for (const [userId, status] of staffStatus) {
       if (status === 'disponible') {
         try {
           const member = await client.users.fetch(userId);
-          const guildMember = await guild.members.fetch(member.id);
-          availableStaff.push(`🔵 ${guildMember.displayName}`);
+          const guildMember = await guild.members.fetch(member.id); // Récupération du pseudo d'affichage
+          availableStaff.push(`- ${guildMember.displayName}`);
         } catch (error) {
           console.warn(`Impossible de récupérer le membre ${userId}`);
         }
@@ -64,8 +66,6 @@ async function updatePresenceEmbed() {
       .setThumbnail('attachment://image.png')
       .addFields({ name: `Disponibles`, value: availableStaff.join('\n') || 'Aucun', inline: false });
 
-    const channel = await client.channels.fetch(CHANNEL_ID);
-
     if (lastMessageId) {
       const lastMessage = await channel.messages.fetch(lastMessageId).catch(() => null);
       if (lastMessage) await lastMessage.delete();
@@ -77,26 +77,6 @@ async function updatePresenceEmbed() {
     console.error("Erreur lors de la mise à jour de l'embed :", error);
   }
 }
-
-client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isCommand() || interaction.commandName !== 'presence') return;
-
-  const member = await interaction.guild.members.fetch(interaction.user.id);
-  if (!member.roles.cache.has(STAFF_ROLE_ID)) {
-    return interaction.reply({ content: "Vous n'avez pas la permission d'utiliser cette commande.", ephemeral: true });
-  }
-
-  const status = interaction.options.getString('statut');
-  if (status === 'indisponible') {
-    staffStatus.delete(interaction.user.id);
-  } else {
-    staffStatus.set(interaction.user.id, status);
-  }
-
-  await updatePresenceEmbed();
-
-  await interaction.reply({ content: `Vous êtes maintenant marqué comme ${status}.`, ephemeral: true });
-});
 
 client.on('ready', async () => {
   const guild = client.guilds.cache.first();
