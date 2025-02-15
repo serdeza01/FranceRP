@@ -41,12 +41,14 @@ client.once('ready', async () => {
 async function updatePresenceEmbed() {
   try {
     const availableStaff = [];
+    const guild = await client.guilds.fetch(CHANNEL_ID);
 
     for (const [userId, status] of staffStatus) {
       if (status === 'disponible') {
         try {
           const member = await client.users.fetch(userId);
-          availableStaff.push(member.username);
+          const guildMember = await guild.members.fetch(member.id);
+          availableStaff.push(`🔵 ${guildMember.displayName}`);
         } catch (error) {
           console.warn(`Impossible de récupérer le membre ${userId}`);
         }
@@ -60,15 +62,15 @@ async function updatePresenceEmbed() {
       .setTitle('Statut des Staffs disponible en jeu')
       .setTimestamp()
       .setThumbnail('attachment://image.png')
-      .addFields({ name: `Disponibles`, value: availableStaff.join(' / ') || 'Aucun', inline: false });
-      
+      .addFields({ name: `Disponibles`, value: availableStaff.join('\n') || 'Aucun', inline: false });
+
     const channel = await client.channels.fetch(CHANNEL_ID);
-    
+
     if (lastMessageId) {
       const lastMessage = await channel.messages.fetch(lastMessageId).catch(() => null);
       if (lastMessage) await lastMessage.delete();
     }
-  
+
     const newMessage = await channel.send({ embeds: [embed], files: [file] });
     lastMessageId = newMessage.id;
   } catch (error) {
