@@ -79,6 +79,11 @@ async function updatePresenceEmbed() {
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isCommand() || interaction.commandName !== 'presence') return;
 
+  const member = await interaction.guild.members.fetch(interaction.user.id);
+  if (!member.roles.cache.has(STAFF_ROLE_ID)) {
+    return interaction.reply({ content: "Vous n'avez pas la permission d'utiliser cette commande.", ephemeral: true });
+  }
+
   const status = interaction.options.getString('statut');
   if (status === 'indisponible') {
     staffStatus.delete(interaction.user.id);
