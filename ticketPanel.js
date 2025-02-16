@@ -10,9 +10,9 @@ async function sendTicketPanel(client) {
     }
     const file = new AttachmentBuilder("./image.png");
     const embed = new EmbedBuilder()
-      .setTitle("Support")
+      .setTitle("📌 Support")
       .setDescription(
-        "Pour toute demande d'aide, d'unban ou de création d'un gang merci de sélectionnez le type de ticket avec les 3 boutons ci-dessous."
+        "Sélectionnez votre type de demande :\n\n • 📩 Support : Problème en jeu, plainte, question.\n • 🚫 Unban : Contester ou expliquer un bannissement.\n • 🛠️ Gang : Créer ou modifier un gang.\n Cliquez sur un bouton pour ouvrir un ticket."
       )
       .setColor(0x00aaff)
       .setThumbnail("attachment://image.png");
