@@ -47,19 +47,24 @@ module.exports = async (interaction) => {
         name: channelName,
         parent: categoryId,
         permissionOverwrites: [
-          // Tout le monde ne peut pas voir le canal
+          // Empêcher tout le monde de voir le canal
           {
             id: guild.id,
             deny: ["ViewChannel"],
           },
-          // Le créateur du ticket peut voir et écrire
+          // Autoriser le créateur du ticket à voir et écrire dans le canal
           {
             id: interaction.user.id,
             allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"],
           },
-          // Vous pouvez ajouter ici d'autres permissions pour le staff
+          // Autoriser le rôle staff à voir et écrire dans le canal
+          {
+            id: "1304151263851708458", // Remplacez par l'ID exact du rôle staff
+            allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"],
+          },
         ],
       });
+      
 
       // Ping de l'utilisateur dans le ticket
       await ticketChannel.send({ content: `<@${interaction.user.id}>` });
