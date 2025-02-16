@@ -1,4 +1,10 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, AttachmentBuilder } = require("discord.js");
+const {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  AttachmentBuilder,
+} = require("discord.js");
 
 module.exports = async (interaction) => {
   if (!interaction.isButton()) return;
@@ -29,8 +35,10 @@ module.exports = async (interaction) => {
         "Merci d'avoir ouvert un ticket, pour la création d'un gang il vous sera demandé de répondre aux questions ci-dessous :\n\n• Le nom de gang\n• Où va-t-il se situer en ville ?\n• L’historie du gang / ce que tu veux faire avec ce gang\n• La hiérarchie / les potentiels membres dans ton gang\n• Le logo\n\nPuis patienter le temps qu'un membre du staff prenne en charge votre ticket.";
     }
 
-    // Utilisation du displayName pour le nom du salon de ticket (on remplace les espaces par des tirets)
-    const sanitizedDisplayName = interaction.member.displayName.replace(/\s+/g, '-').toLowerCase();
+    // Ajouter le pseudo d'affichage de l'utilisateur dans le nom du canal (en remplaçant les espaces par des tirets et en minuscule)
+    const sanitizedDisplayName = interaction.member.displayName
+      .replace(/\s+/g, "-")
+      .toLowerCase();
     const channelName = `${baseChannelName}-${sanitizedDisplayName}`;
 
     // Création du salon dans la catégorie
@@ -49,35 +57,37 @@ module.exports = async (interaction) => {
             id: interaction.user.id,
             allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"],
           },
-          // La gestion additionnelle des permissions pour le staff peut être ajoutée ici si besoin
+          // Vous pouvez ajouter ici d'autres permissions pour le staff
         ],
       });
 
       // Ping de l'utilisateur dans le ticket
       await ticketChannel.send({ content: `<@${interaction.user.id}>` });
 
-      // Préparation de l'image en pièce jointe pour le thumbnail
-      const imageAttachment = new AttachmentBuilder("./image.png").setName("image.png");
+      // Préparer l'image pour le thumbnail
+      const imageAttachment = new AttachmentBuilder("./image.png").setName(
+        "image.png"
+      );
 
-      // Envoi du message d'accueil dans le ticket avec le texte approprié et le thumbnail
+      // Création de l'embed d'accueil du ticket avec le thumbnail
       const ticketEmbed = new EmbedBuilder()
         .setDescription(messageContent)
         .setColor(0x00ae86)
         .setThumbnail("attachment://image.png");
 
       // Ajout d'un bouton "Fermer le ticket"
-      const closeRow = new ActionRowBuilder().addComponents(
+      const closeButtonRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("close_ticket")
           .setLabel("Fermer le ticket")
           .setStyle(ButtonStyle.Danger)
       );
 
-      // Envoi de l'embed avec la pièce jointe image.png
+      // Envoi de l'embed avec l'image jointe
       await ticketChannel.send({
         embeds: [ticketEmbed],
-        components: [closeRow],
-        files: [imageAttachment]
+        components: [closeButtonRow],
+        files: [imageAttachment],
       });
 
       // Répondre à l'interaction pour confirmer la création du ticket (réponse éphémère)
@@ -96,32 +106,41 @@ module.exports = async (interaction) => {
 
   // --- Gestion du bouton "Fermer le ticket" ---
   if (interaction.customId === "close_ticket") {
-    // À la fermeture, nous souhaitons que seul le staff (rôle 1304151263851708458) puisse écrire
     const ticketChannel = interaction.channel;
     try {
-      // Désactiver les envois pour @everyone
-      await ticketChannel.permissionOverwrites.edit(guild.id, { SendMessages: false });
+      // Désactiver l'envoi de messages pour @everyone
+      await ticketChannel.permissionOverwrites.edit(guild.id, {
+        SendMessages: false,
+      });
       // Autoriser le staff à envoyer des messages (ID du rôle : 1304151263851708458)
-      await ticketChannel.permissionOverwrites.edit("1304151263851708458", { SendMessages: true });
+      await ticketChannel.permissionOverwrites.edit("1304151263851708458", {
+        SendMessages: true,
+      });
 
-      // Envoi d'un second embed avec 2 boutons dans le ticket
+      // Création d'un embed indiquant la fermeture du ticket et proposant des actions
       const closeEmbed = new EmbedBuilder()
-        .setDescription("Le ticket vient d'être fermé, merci de choisir ce que vous souhaitez faire.")
+        .setDescription("Le ticket va être fermé. Choisissez une option :")
         .setColor(0xff0000);
 
       const closeOptionsRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("final_close_ticket")
-          .setLabel("Fermer le ticket")
+          .setLabel("Transcript & Fermer")
           .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId("close_ticket_no_transcript")
+          .setLabel("Fermer sans Transcript")
+          .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId("reopen_ticket")
           .setLabel("Réouvrir le ticket")
           .setStyle(ButtonStyle.Success)
       );
 
-      await ticketChannel.send({ embeds: [closeEmbed], components: [closeOptionsRow] });
-
+      await ticketChannel.send({
+        embeds: [closeEmbed],
+        components: [closeOptionsRow],
+      });
     } catch (error) {
       console.error("Erreur lors de la fermeture du ticket :", error);
       await interaction.reply({
@@ -131,8 +150,9 @@ module.exports = async (interaction) => {
     }
   }
 
-  // --- Gestion du bouton "final_close_ticket" (fermeture définitive) ---
+  // --- Gestion du bouton "final_close_ticket" (Transcript & Fermer) ---
   if (interaction.customId === "final_close_ticket") {
+    // Vérifier les permissions du membre (ici, la fermeture définitive est réservée au staff)
     if (!interaction.member.roles.cache.has("1304151263851708458")) {
       return interaction.reply({
         content: "Vous n'êtes pas autorisé à fermer définitivement ce ticket.",
@@ -146,14 +166,18 @@ module.exports = async (interaction) => {
     });
 
     try {
-      // Récupérer l'ensemble des messages du canal
-      const fetchedMessages = await interaction.channel.messages.fetch({ limit: 100 });
-      // Pour être sûr d'avoir l'ordre chronologique
-      const sortedMessages = fetchedMessages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+      // Récupérer l'ensemble des messages du canal (vous pouvez augmenter le limit si nécessaire)
+      const fetchedMessages = await interaction.channel.messages.fetch({
+        limit: 100,
+      });
+      // Tri des messages par ordre chronologique
+      const sortedMessages = fetchedMessages.sort(
+        (a, b) => a.createdTimestamp - b.createdTimestamp
+      );
 
-      // Construction du transcript en format texte
+      // Construction du transcript au format texte
       let transcriptText = `Transcript du ticket: ${interaction.channel.name}\n\n`;
-      sortedMessages.forEach(msg => {
+      sortedMessages.forEach((msg) => {
         const timestamp = new Date(msg.createdTimestamp).toLocaleString();
         transcriptText += `[${timestamp}] ${msg.author.tag}: ${msg.content}\n`;
       });
@@ -161,21 +185,39 @@ module.exports = async (interaction) => {
       // Création d'un buffer à partir du transcript
       const transcriptBuffer = Buffer.from(transcriptText, "utf-8");
 
-      // Créer l'attachement du transcript
-      const transcriptFile = new AttachmentBuilder(transcriptBuffer, { name: `transcript-${interaction.channel.name}.txt` });
+      // Création d'un attachement avec le transcript
+      const transcriptFile = new AttachmentBuilder(transcriptBuffer, {
+        name: `transcript-${interaction.channel.name}.txt`,
+      });
 
-      // Récupérer le salon de destination pour le transcript
-      const transcriptChannel = await interaction.guild.channels.fetch("1304216761930879057");
+      // Optionnel : sauvegarder le transcript dans votre base de données MySQL (via un appel à votre script PHP ou une requête HTTP)
+      // Par exemple (pseudo-code) :
+      // await saveTranscriptInDatabase(interaction.channel.id, transcriptText);
+      // La fonction saveTranscriptInDatabase devra être implémentée pour faire une requête vers votre API/PHP.
+
+      // Vous pouvez également générer un lien personnalisé pour consulter le transcript,
+      // si votre API retourne une URL spécifique après stockage.
+      // Par exemple :
+      // const transcriptUrl = await getTranscriptUrl(interaction.channel.id);
+
+      // Si vous ne souhaitez pas afficher le lien dans Discord, vous pouvez le logger ou l’envoyer dans un salon spécifique.
+      // Exemple d'envoi dans un salon de logs :
+      const transcriptChannel = await interaction.guild.channels.fetch(
+        "1304216761930879057"
+      );
       if (transcriptChannel) {
         await transcriptChannel.send({
           content: `Voici le transcript du ticket **${interaction.channel.name}** :`,
-          files: [transcriptFile]
+          files: [transcriptFile],
         });
       } else {
         console.error("Salon de transcript introuvable !");
       }
     } catch (err) {
-      console.error("Erreur lors de la création ou de l'envoi du transcript :", err);
+      console.error(
+        "Erreur lors de la création ou de l'envoi du transcript :",
+        err
+      );
     }
 
     // Suppression du canal après 3 secondes
@@ -188,15 +230,48 @@ module.exports = async (interaction) => {
     }, 3000);
   }
 
-  // --- Gestion du bouton "reopen_ticket" (réouverture du ticket) ---
+  // --- Gestion du bouton "close_ticket_no_transcript" ---
+  if (interaction.customId === "close_ticket_no_transcript") {
+    // Vérifier toujours la permission si besoin (par exemple, réservé au staff)
+    if (!interaction.member.roles.cache.has("1304151263851708458")) {
+      return interaction.reply({
+        content: "Vous n'êtes pas autorisé à fermer définitivement ce ticket.",
+        ephemeral: true,
+      });
+    }
+
+    await interaction.reply({
+      content: "Fermeture définitive du ticket sans transcript...",
+      ephemeral: true,
+    });
+
+    // Vous pouvez, si besoin, ajouter ici une logique de sauvegarde minimale (par exemple notifier un log interne)
+
+    // Suppression du canal après 3 secondes sans création de transcript
+    setTimeout(() => {
+      interaction.channel
+        .delete()
+        .catch((err) =>
+          console.error("Erreur lors de la suppression du canal :", err)
+        );
+    }, 3000);
+  }
+
+  // --- Gestion du bouton "reopen_ticket" (Réouvrir le ticket) ---
   if (interaction.customId === "reopen_ticket") {
     try {
-      // Rétablir les permissions pour permettre au créateur (et @everyone si souhaité) d'écrire à nouveau.
-      await interaction.channel.permissionOverwrites.edit(guild.id, { SendMessages: null });
-      await interaction.channel.permissionOverwrites.edit("1304151263851708458", { SendMessages: true });
+      // Réactivation des permissions pour le créateur du ticket (et @everyone si souhaité)
+      await interaction.channel.permissionOverwrites.edit(guild.id, {
+        SendMessages: null,
+      });
+      await interaction.channel.permissionOverwrites.edit(
+        "1304151263851708458",
+        { SendMessages: true }
+      );
 
       await interaction.reply({
-        content: "Ticket réouvert, vous pouvez à nouveau échanger dans ce canal.",
+        content:
+          "Ticket réouvert, vous pouvez à nouveau échanger dans ce canal.",
         ephemeral: true,
       });
     } catch (err) {
