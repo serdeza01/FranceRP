@@ -13,21 +13,25 @@ module.exports = async (interaction) => {
     interaction.customId === "ticket_unban" ||
     interaction.customId === "ticket_gang"
   ) {
-    let channelName, messageContent;
+    let baseChannelName, messageContent;
 
     if (interaction.customId === "ticket_support") {
-      channelName = "dmd-aide";
+      baseChannelName = "dmd-aide";
       messageContent =
         "Merci d'avoir contacté le support de RP France, merci de décrire votre problème et de patienter le temps qu'un membre du staff prenne en charge votre demande.";
     } else if (interaction.customId === "ticket_unban") {
-      channelName = "dmd-unban";
+      baseChannelName = "dmd-unban";
       messageContent =
         "Merci d'avoir ouvert un ticket, pour votre demande d'unban merci de nous donner votre @ sur roblox et pourquoi vous avez été banni";
     } else if (interaction.customId === "ticket_gang") {
-      channelName = "candid-gang";
+      baseChannelName = "candid-gang";
       messageContent =
         "Merci d'avoir ouvert un ticket, pour la création d'un gang il vous sera demandé de répondre aux questions ci-dessous :\n\n• Le nom de gang\n• Où va-t-il se situer en ville ?\n• L’historie du gang / ce que tu veux faire avec ce gang\n• La hiérarchie / les potentiels membres dans ton gang\n• Le logo\n\nPuis patienter le temps qu'un membre du staff prenne en charge votre ticket.";
     }
+
+    // Utilisation du displayName pour le nom du salon de ticket (on remplace les espaces par des tirets)
+    const sanitizedDisplayName = interaction.member.displayName.replace(/\s+/g, '-').toLowerCase();
+    const channelName = `${baseChannelName}-${sanitizedDisplayName}`;
 
     // Création du salon dans la catégorie
     try {
@@ -52,12 +56,14 @@ module.exports = async (interaction) => {
       // Ping de l'utilisateur dans le ticket
       await ticketChannel.send({ content: `<@${interaction.user.id}>` });
 
-      const file = new AttachmentBuilder("./image.png");
-      // Envoi du message d'accueil dans le ticket avec le texte approprié
+      // Préparation de l'image en pièce jointe pour le thumbnail
+      const imageAttachment = new AttachmentBuilder("./image.png").setName("image.png");
+
+      // Envoi du message d'accueil dans le ticket avec le texte approprié et le thumbnail
       const ticketEmbed = new EmbedBuilder()
         .setDescription(messageContent)
         .setColor(0x00ae86)
-        .setThumbnail("attachment://image.png"); // Utilise l'image jointe comme thumbnail
+        .setThumbnail("attachment://image.png");
 
       // Ajout d'un bouton "Fermer le ticket"
       const closeRow = new ActionRowBuilder().addComponents(
@@ -67,11 +73,11 @@ module.exports = async (interaction) => {
           .setStyle(ButtonStyle.Danger)
       );
 
-      // Envoi de l'embed avec la pièce jointe image.png (assurez-vous que le fichier est à la racine)
-      await ticketChannel.send({ 
-        embeds: [ticketEmbed], 
+      // Envoi de l'embed avec la pièce jointe image.png
+      await ticketChannel.send({
+        embeds: [ticketEmbed],
         components: [closeRow],
-        files: [file]
+        files: [imageAttachment]
       });
 
       // Répondre à l'interaction pour confirmer la création du ticket (réponse éphémère)
@@ -133,31 +139,31 @@ module.exports = async (interaction) => {
         ephemeral: true,
       });
     }
-  
+
     await interaction.reply({
       content: "Création du transcript et fermeture définitive du ticket...",
       ephemeral: true,
     });
-  
+
     try {
       // Récupérer l'ensemble des messages du canal
       const fetchedMessages = await interaction.channel.messages.fetch({ limit: 100 });
       // Pour être sûr d'avoir l'ordre chronologique
       const sortedMessages = fetchedMessages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
-      
+
       // Construction du transcript en format texte
       let transcriptText = `Transcript du ticket: ${interaction.channel.name}\n\n`;
       sortedMessages.forEach(msg => {
         const timestamp = new Date(msg.createdTimestamp).toLocaleString();
         transcriptText += `[${timestamp}] ${msg.author.tag}: ${msg.content}\n`;
       });
-      
+
       // Création d'un buffer à partir du transcript
       const transcriptBuffer = Buffer.from(transcriptText, "utf-8");
-      
+
       // Créer l'attachement du transcript
       const transcriptFile = new AttachmentBuilder(transcriptBuffer, { name: `transcript-${interaction.channel.name}.txt` });
-      
+
       // Récupérer le salon de destination pour le transcript
       const transcriptChannel = await interaction.guild.channels.fetch("1304216761930879057");
       if (transcriptChannel) {
@@ -171,7 +177,7 @@ module.exports = async (interaction) => {
     } catch (err) {
       console.error("Erreur lors de la création ou de l'envoi du transcript :", err);
     }
-  
+
     // Suppression du canal après 3 secondes
     setTimeout(() => {
       interaction.channel
