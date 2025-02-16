@@ -9,6 +9,9 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
+// Import de la fonction sendTicketPanel
+const { sendTicketPanel } = require('./ticketPanel');
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -57,6 +60,7 @@ async function updatePresenceEmbed(guild, channelId) {
         }
       }
     }
+    // Création de la pièce jointe pour le thumbnail
     const file = new AttachmentBuilder("./image.png");
     const embed = new EmbedBuilder()
       .setColor(0x00ff00)
@@ -108,19 +112,26 @@ client.once('ready', async () => {
   } catch (error) {
     console.error("Erreur lors de la récupération des membres :", error);
   }
+
+  // Envoi automatique du panneau de ticket dans le salon d'ID 1304151485264822292
+  await sendTicketPanel(client);
 });
 
 // Gestion dynamique des interactions (commandes)
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isCommand()) return;
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
-  try {
-    // On passe également nos variables et la fonction updatePresenceEmbed aux commandes
-    await command.execute(interaction, { staffStatus: global.staffStatus, updatePresenceEmbed, CHANNEL_ID, STAFF_ROLE_ID });
-  } catch (error) {
-    console.error(error);
-    await interaction.reply({ content: 'Une erreur est survenue.', ephemeral: true });
+  if (interaction.isCommand()) {
+    const command = client.commands.get(interaction.commandName);
+    if (!command) return;
+    try {
+      await command.execute(interaction, { staffStatus: global.staffStatus, updatePresenceEmbed, CHANNEL_ID, STAFF_ROLE_ID });
+    } catch (error) {
+      console.error(error);
+      await interaction.reply({ content: 'Une erreur est survenue.', ephemeral: true });
+    }
+  } else if (interaction.isButton()) {
+    // Appel du handler pour les boutons
+    const buttonHandler = require('./interactionCreate');
+    buttonHandler(interaction);
   }
 });
 
