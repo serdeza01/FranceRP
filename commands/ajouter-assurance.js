@@ -1,6 +1,5 @@
-// ajouter-assurance.js
 const { SlashCommandBuilder } = require("discord.js");
-const db = require("../db"); // db est maintenant un pool de connexions
+const db = require("../db");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -37,8 +36,6 @@ module.exports = {
       const user = interaction.options.getUser("utilisateur");
       const image = interaction.options.getAttachment("image");
       const expiration = interaction.options.getString("expiration");
-
-      // Utilisation du pool en mode Promise
       await db
         .promise()
         .execute(

@@ -13,8 +13,6 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    // Vérification du rôle requis pour supprimer un permis
-    // (ID de rôle déjà utilisé dans la commande d'ajout de permis)
     if (!interaction.member.roles.cache.has("1326923044500934656")) {
       return interaction.reply({
         content: "Vous n'avez pas la permission de supprimer le permis.",

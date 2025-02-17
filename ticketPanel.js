@@ -1,4 +1,10 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, AttachmentBuilder } = require("discord.js");
+const {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  AttachmentBuilder,
+} = require("discord.js");
 
 async function sendTicketPanel(client) {
   try {

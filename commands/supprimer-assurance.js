@@ -13,8 +13,6 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    // Vérification du rôle requis pour supprimer une assurance
-    // (ID de rôle déjà utilisé dans la commande d'ajout d'assurance)
     if (!interaction.member.roles.cache.has("1328419821901189170")) {
       return interaction.reply({
         content: "Vous n'avez pas la permission de supprimer l'assurance.",

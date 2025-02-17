@@ -25,7 +25,6 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    // Vérification du rôle (remplacez par l'ID du rôle requis)
     if (!interaction.member.roles.cache.has("1326923044500934656")) {
       return interaction.reply({
         content: "Vous n'avez pas la permission d'ajouter un permis.",
@@ -38,14 +37,15 @@ module.exports = {
     const expiration = interaction.options.getString("expiration");
 
     try {
-      // Utilisation du mode Promise avec le pool
-      await db.promise().execute(
-        "INSERT INTO permis (discord_id, image_path, expiration_date) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE image_path = ?, expiration_date = ?",
-        [user.id, image.url, expiration, image.url, expiration]
-      );
+      await db
+        .promise()
+        .execute(
+          "INSERT INTO permis (discord_id, image_path, expiration_date) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE image_path = ?, expiration_date = ?",
+          [user.id, image.url, expiration, image.url, expiration]
+        );
       return interaction.reply({
         content: `Le permis pour ${user.username} a été ajouté avec succès.`,
-        ephemeral: false, // réponse publique
+        ephemeral: false,
       });
     } catch (err) {
       console.error("Erreur MySQL:", err);
