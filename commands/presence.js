@@ -21,7 +21,7 @@ async function getOrCreatePresenceMessage(client) {
   if (!channel) {
     throw new Error(`Channel ${PRESENCE_CHANNEL_ID} introuvable.`);
   }
-  const [rows] = await db.execute("SELECT message_id FROM embed_messages WHERE name = 'presence'");
+  const [rows] = await db.execute("SELECT message_id FROM presence_embed WHERE channel_id = ?", [PRESENCE_CHANNEL_ID]);
 
   let presenceMessage;
 

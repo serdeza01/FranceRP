@@ -43,6 +43,13 @@ for (const file of commandFiles) {
 global.staffStatus = new Map();
 global.lastMessageId = null;
 
+// ***** Nouvelle partie pour les tickets *****
+global.ticketAuthorizedRoles = new Set();
+global.ticketAuthorizedUsers = new Set();
+// Remplace "VOTRE_TICKET_CHANNEL_ID" par l'ID réel du salon des tickets
+const ticketChannelId = "VOTRE_TICKET_CHANNEL_ID"; 
+// ***********************************************
+
 const STAFF_ROLE_ID = "1304151263851708458";
 const CHANNEL_ID = "1337086501778882580";
 const staffUsernames = [];
@@ -107,6 +114,21 @@ async function updatePresenceEmbedMessage(guild, channelId) {
   }
 }
 
+// ***** Nouvelle fonction pour mettre à jour l'embed ticket *****
+async function updateTicketEmbed(guild, channelId) {
+  try {
+    const channel = await guild.channels.fetch(channelId);
+    if (!channel) {
+      console.error("Salon de ticket introuvable pour updateTicketEmbed.");
+      return;
+    }
+    await sendTicketPanel(client);
+  } catch (error) {
+    console.error("Erreur dans updateTicketEmbed :", error);
+  }
+}
+// ***********************************************
+
 client.once("ready", async () => {
   console.log(`Bot connecté en tant que ${client.user.tag}`);
 
@@ -170,12 +192,24 @@ client.on("interactionCreate", async (interaction) => {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
     try {
-      await command.execute(interaction, {
-        staffStatus: global.staffStatus,
-        updatePresenceEmbed: updatePresenceEmbedMessage,
-        CHANNEL_ID,
-        STAFF_ROLE_ID,
-      });
+      if (
+        ["add_role", "remove_role", "add_user", "remove_user"].includes(interaction.commandName)
+      ) {
+        await command.execute(interaction, {
+          STAFF_ROLE_ID,
+          ticketAuthorizedRoles: global.ticketAuthorizedRoles,
+          ticketAuthorizedUsers: global.ticketAuthorizedUsers,
+          updateTicketEmbed,
+          ticketChannelId,
+        });
+      } else {
+        await command.execute(interaction, {
+          staffStatus: global.staffStatus,
+          updatePresenceEmbed: updatePresenceEmbedMessage,
+          CHANNEL_ID,
+          STAFF_ROLE_ID,
+        });
+      }
     } catch (error) {
       console.error(error);
       await interaction.reply({
@@ -183,7 +217,6 @@ client.on("interactionCreate", async (interaction) => {
         ephemeral: true,
       });
     }
-
   } else if (interaction.isModalSubmit()) {
     if (interaction.customId === "connectRobloxModal") {
       const username = interaction.fields.getTextInputValue("roblox_username");
