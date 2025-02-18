@@ -126,6 +126,7 @@ client.once("ready", async () => {
   } catch (error) {
     console.error("Erreur lors de la récupération de l'embed de présence en BDD :", error);
   }
+
   try {
     const members = await guild.members.fetch();
     for (const username of staffUsernames) {
@@ -135,17 +136,24 @@ client.once("ready", async () => {
       }
     }
 
-    /* 
-       => Ici, le comportement est le suivant:
-         Pour le prochain redémarrage, si aucun embed n'a encore été diffusé (global.lastMessageId est null)
-         nous exécutons updatePresenceEmbed() pour l'envoyer et stocker son ID en BDD.
-         Les redémarrages suivants (tant que l'embed est présent en BDD et dans le salon), nous n'enverrons pas un nouveau embed.
-    */
+    let presenceMessage;
+    const channel = await guild.channels.fetch(CHANNEL_ID);
+
     if (!global.lastMessageId) {
-      await updatePresenceEmbed(guild, CHANNEL_ID);
+      presenceMessage = await updatePresenceEmbed(guild, CHANNEL_ID);
+    } else {
+      try {
+        presenceMessage = await channel.messages.fetch(global.lastMessageId);
+      } catch (err) {
+        console.error("L'embed stocké en BDD est introuvable dans le salon. Un nouveau embed va être créé.");
+        presenceMessage = await updatePresenceEmbed(guild, CHANNEL_ID);
+      }
     }
+
+    const newEmbed = await buildPresenceEmbed();
+    await presenceMessage.edit({ embeds: [newEmbed] });
   } catch (error) {
-    console.error("Erreur lors de la récupération des membres :", error);
+    console.error("Erreur lors de la récupération des membres ou mise à jour de l'embed :", error);
   }
 
   await sendTicketPanel(client);
