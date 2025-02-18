@@ -1,4 +1,3 @@
-// connectRoblox.js
 const {
     SlashCommandBuilder,
     ModalBuilder,
@@ -22,12 +21,10 @@ module.exports = {
         .setDescription('Associe et vérifie ton compte Roblox.'),
 
     async execute(interaction) {
-        // Crée un modal pour récupérer le nom d'utilisateur Roblox
         const modal = new ModalBuilder()
             .setCustomId('connectRobloxModal')
             .setTitle('Lien ton compte Roblox');
 
-        // Création du champ pour le nom d'utilisateur Roblox
         const usernameInput = new TextInputBuilder()
             .setCustomId('roblox_username')
             .setLabel("Nom d'utilisateur Roblox")

@@ -11,7 +11,6 @@ if (
   interaction.isModalSubmit() &&
   interaction.customId === "connectRobloxModal"
 ) {
-  // Fonction utilitaire pour générer un code de vérification
   const generateVerificationCode = (length = 6) => {
     const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     let code = "";
@@ -55,7 +54,6 @@ Ensuite, lance la commande \`/verifyroblox\` pour finaliser la vérification.`,
 }
 
 module.exports = async (interaction) => {
-  // Si l'interaction n'est pas un bouton, on ne fait rien (les autres types d'interactions sont gérés ailleurs)
   if (!interaction.isButton()) return;
 
   const guild = interaction.guild;

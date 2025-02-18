@@ -33,7 +33,7 @@ for (const file of commandFiles) {
 }
 
 global.staffStatus = new Map();
-global.lastMessageId = null;  // Cet ID sera synchronisé avec la BDD
+global.lastMessageId = null;
 
 const STAFF_ROLE_ID = "1304151263851708458";
 const CHANNEL_ID = "1337086501778882580";
