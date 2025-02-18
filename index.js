@@ -13,7 +13,7 @@ const { sendTicketPanel } = require("./ticketPanel");
 const db = require("./db");
 const axios = require("axios");
 
-const { updatePresenceEmbed, buildPresenceEmbed } = require("./path/to/presence.js");
+const { updatePresenceEmbed, buildPresenceEmbed } = require("./commands/presence");
 
 const client = new Client({
   intents: [
