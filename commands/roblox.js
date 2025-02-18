@@ -1,38 +1,74 @@
 const { SlashCommandBuilder } = require('discord.js');
+const db = require('../db');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('roblox')
-    .setDescription('Affiche le compte Roblox associé à un utilisateur.')
+    .setDescription('Affiche le compte Roblox associé à un utilisateur Discord ou à un nom Roblox.')
     .addUserOption(option =>
       option.setName('user')
-        .setDescription('L\'utilisateur Discord')
-        .setRequired(true)
+        .setDescription("L'utilisateur Discord")
+        .setRequired(false)
+    )
+    .addStringOption(option => 
+      option.setName('username')
+        .setDescription("Le nom d'utilisateur Roblox")
+        .setRequired(false)
     ),
   async execute(interaction) {
-    const user = interaction.options.getUser('user');
-    const discordId = user.id;
+    const discordUser = interaction.options.getUser('user');
+    const robloxUsername = interaction.options.getString('username');
+
+    if (!discordUser && !robloxUsername) {
+      return interaction.reply({
+        content: "Veuillez spécifier soit un utilisateur Discord, soit un nom d'utilisateur Roblox.",
+        ephemeral: true,
+      });
+    }
 
     try {
-      const mysql = require('mysql2/promise');
-      const connection = await mysql.createConnection({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME,
-      });
+      let query;
+      let params;
 
-      const [rows] = await connection.execute("SELECT roblox_username FROM user_roblox WHERE discord_id = ?", [discordId]);
-      await connection.end();
-
-      if (rows.length > 0) {
-        await interaction.reply({ content: `L'utilisateur **${user.tag}** est associé au compte Roblox : **${rows[0].roblox_username}**.` });
+      if (discordUser) {
+        query = "SELECT roblox_username FROM user_roblox WHERE discord_id = ?";
+        params = [discordUser.id];
       } else {
-        await interaction.reply({ content: `L'utilisateur **${user.tag}** n'a pas encore associé son compte Roblox.` });
+        query = "SELECT discord_id FROM user_roblox WHERE roblox_username = ?";
+        params = [robloxUsername];
+      }
+
+      const [rows] = await db.execute(query, params);
+      
+      if (rows.length > 0) {
+        if (discordUser) {
+          return interaction.reply({
+            content: `L'utilisateur **${discordUser.tag}** est associé au compte Roblox : **${rows[0].roblox_username}**.`,
+          });
+        } else {
+          const discordId = rows[0].discord_id;
+          const fetchedUser = await interaction.client.users.fetch(discordId);
+          return interaction.reply({
+            content: `Le compte Roblox **${robloxUsername}** est associé à l'utilisateur Discord : **${fetchedUser.tag}**.`,
+          });
+        }
+      } else {
+        if (discordUser) {
+          return interaction.reply({
+            content: `L'utilisateur **${discordUser.tag}** n'a pas associé de compte Roblox.`,
+          });
+        } else {
+          return interaction.reply({
+            content: `Aucune association trouvée pour le compte Roblox **${robloxUsername}**.`,
+          });
+        }
       }
     } catch (error) {
-      console.error("Erreur lors de la récupération du compte Roblox :", error);
-      await interaction.reply({ content: "Une erreur est survenue lors de la récupération de l'association.", ephemeral: true });
+      console.error("Erreur lors de la récupération de l'association Roblox :", error);
+      return interaction.reply({
+        content: "Une erreur est survenue lors de la récupération de l'association.",
+        ephemeral: true,
+      });
     }
   }
 };

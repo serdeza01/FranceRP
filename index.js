@@ -11,6 +11,9 @@ require("dotenv").config();
 
 const { sendTicketPanel } = require("./ticketPanel");
 const db = require("./db");
+const axios = require("axios");
+
+const { updatePresenceEmbed, buildPresenceEmbed } = require("./path/to/presence.js");
 
 const client = new Client({
   intents: [
@@ -20,8 +23,6 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
   ],
 });
-
-const { updatePresenceEmbed, buildPresenceEmbed } = require("./path/to/presence.js");
 
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, "commands");
@@ -51,7 +52,7 @@ const staffUsernames = [];
  * @param {Guild} guild Le serveur Discord.
  * @param {string} channelId L'ID du salon où envoyer l'embed.
  */
-async function updatePresenceEmbed(guild, channelId) {
+async function updatePresenceEmbedMessage(guild, channelId) {
   try {
     const availableStaff = [];
     const channel = await client.channels.fetch(channelId);
@@ -141,13 +142,13 @@ client.once("ready", async () => {
     const channel = await guild.channels.fetch(CHANNEL_ID);
     let presenceMessage;
     if (!global.lastMessageId) {
-      presenceMessage = await updatePresenceEmbed(guild, CHANNEL_ID);
+      presenceMessage = await updatePresenceEmbedMessage(guild, CHANNEL_ID);
     } else {
       try {
         presenceMessage = await channel.messages.fetch(global.lastMessageId);
       } catch (err) {
         console.error("L'embed stocké en BDD est introuvable dans le salon. Un nouvel embed va être créé.");
-        presenceMessage = await updatePresenceEmbed(guild, CHANNEL_ID);
+        presenceMessage = await updatePresenceEmbedMessage(guild, CHANNEL_ID);
       }
     }
     const newEmbed = await buildPresenceEmbed();
@@ -166,7 +167,7 @@ client.on("interactionCreate", async (interaction) => {
     try {
       await command.execute(interaction, {
         staffStatus: global.staffStatus,
-        updatePresenceEmbed,
+        updatePresenceEmbed: updatePresenceEmbedMessage,
         CHANNEL_ID,
         STAFF_ROLE_ID,
       });
@@ -176,6 +177,47 @@ client.on("interactionCreate", async (interaction) => {
         content: "Une erreur est survenue.",
         ephemeral: true,
       });
+    }
+  
+  } else if (interaction.isModalSubmit()) {
+    if (interaction.customId === "connectRobloxModal") {
+      const username = interaction.fields.getTextInputValue("roblox_username");
+      const discordId = interaction.user.id;
+
+      try {
+        const response = await axios.get(
+          `https://api.roblox.com/users/get-by-username?username=${encodeURIComponent(username)}`
+        );
+
+        if (!response.data || response.data.Id === 0) {
+          return interaction.reply({
+            content: "Compte Roblox introuvable. Vérifie bien le nom d'utilisateur.",
+            ephemeral: true,
+          });
+        }
+        const robloxId = response.data.Id;
+        const querySelect = "SELECT * FROM user_roblox WHERE discord_id = ?";
+        const [rows] = await db.execute(querySelect, [discordId]);
+
+        if (rows && rows.length > 0) {
+          const queryUpdate = "UPDATE user_roblox SET roblox_username = ?, roblox_id = ? WHERE discord_id = ?";
+          await db.execute(queryUpdate, [username, robloxId, discordId]);
+        } else {
+          const queryInsert = "INSERT INTO user_roblox (discord_id, roblox_username, roblox_id) VALUES (?, ?, ?)";
+          await db.execute(queryInsert, [discordId, username, robloxId]);
+        }
+
+        await interaction.reply({
+          content: `Ton compte Roblox **${username}** (ID: ${robloxId}) a été trouvé et associé à ton compte Discord !`,
+          ephemeral: true,
+        });
+      } catch (error) {
+        console.error("Erreur lors de la connexion du compte Roblox :", error);
+        return interaction.reply({
+          content: "Une erreur est survenue lors de la connexion de ton compte Roblox. Merci de réessayer plus tard.",
+          ephemeral: true,
+        });
+      }
     }
   } else if (interaction.isButton()) {
     const buttonHandler = require("./interactionCreate");
