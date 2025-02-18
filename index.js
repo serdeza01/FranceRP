@@ -10,6 +10,7 @@ const path = require("path");
 require("dotenv").config();
 
 const { sendTicketPanel } = require("./ticketPanel");
+const db = require("./db");
 
 const client = new Client({
   intents: [
@@ -32,20 +33,27 @@ for (const file of commandFiles) {
 }
 
 global.staffStatus = new Map();
-global.lastMessageId = null;
+global.lastMessageId = null;  // Cet ID sera synchronisé avec la BDD
+
 const STAFF_ROLE_ID = "1304151263851708458";
 const CHANNEL_ID = "1337086501778882580";
 const staffUsernames = [];
 
 /**
  * Met à jour l'embed de présence dans le salon défini.
- * @param {Guild} guild Le serveur Discord
- * @param {string} channelId L'ID du salon où envoyer l'embed
+ * 
+ * Si le message existe déjà (son ID est dans global.lastMessageId),
+ * il sera édité. Sinon, un nouveau message est envoyé et son ID est stocké
+ * en BDD.
+ *
+ * @param {Guild} guild Le serveur Discord.
+ * @param {string} channelId L'ID du salon où envoyer l'embed.
  */
 async function updatePresenceEmbed(guild, channelId) {
   try {
     const availableStaff = [];
     const channel = await client.channels.fetch(channelId);
+
     for (const [userId, status] of global.staffStatus) {
       if (status === "disponible") {
         try {
@@ -57,6 +65,7 @@ async function updatePresenceEmbed(guild, channelId) {
         }
       }
     }
+
     const file = new AttachmentBuilder("./image.png");
     const embed = new EmbedBuilder()
       .setColor(0x00ff00)
@@ -68,15 +77,23 @@ async function updatePresenceEmbed(guild, channelId) {
         value: availableStaff.join("\n") || "Aucun",
         inline: false,
       });
+
+    let sentMessage;
     if (global.lastMessageId) {
-      const lastMessage = await channel.messages
-        .fetch(global.lastMessageId)
-        .catch(() => null);
-      if (lastMessage) await lastMessage.delete();
+      sentMessage = await channel.messages.fetch(global.lastMessageId).catch(() => null);
+      if (sentMessage) {
+        await sentMessage.edit({ embeds: [embed], files: [file] });
+      }
     }
 
-    const newMessage = await channel.send({ embeds: [embed], files: [file] });
-    global.lastMessageId = newMessage.id;
+    if (!global.lastMessageId || !sentMessage) {
+      const newMessage = await channel.send({ embeds: [embed], files: [file] });
+      global.lastMessageId = newMessage.id;
+
+      const query =
+        "INSERT INTO presence_embed (channel_id, message_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE message_id = VALUES(message_id)";
+      await db.execute(query, [channelId, newMessage.id]);
+    }
   } catch (error) {
     console.error("Erreur lors de la mise à jour de l'embed :", error);
   }
@@ -99,6 +116,17 @@ client.once("ready", async () => {
   }
 
   try {
+    const [rows] = await db.execute(
+      "SELECT message_id FROM presence_embed WHERE channel_id = ? LIMIT 1",
+      [CHANNEL_ID]
+    );
+    if (rows.length > 0 && rows[0].message_id) {
+      global.lastMessageId = rows[0].message_id;
+    }
+  } catch (error) {
+    console.error("Erreur lors de la récupération de l'embed de présence en BDD :", error);
+  }
+  try {
     const members = await guild.members.fetch();
     for (const username of staffUsernames) {
       const member = members.find((m) => m.user.username === username);
@@ -106,10 +134,20 @@ client.once("ready", async () => {
         global.staffStatus.set(member.id, "disponible");
       }
     }
-    await updatePresenceEmbed(guild, CHANNEL_ID);
+
+    /* 
+       => Ici, le comportement est le suivant:
+         Pour le prochain redémarrage, si aucun embed n'a encore été diffusé (global.lastMessageId est null)
+         nous exécutons updatePresenceEmbed() pour l'envoyer et stocker son ID en BDD.
+         Les redémarrages suivants (tant que l'embed est présent en BDD et dans le salon), nous n'enverrons pas un nouveau embed.
+    */
+    if (!global.lastMessageId) {
+      await updatePresenceEmbed(guild, CHANNEL_ID);
+    }
   } catch (error) {
     console.error("Erreur lors de la récupération des membres :", error);
   }
+
   await sendTicketPanel(client);
 });
 
