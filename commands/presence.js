@@ -47,6 +47,22 @@ async function getOrCreatePresenceMessage(client) {
   return presenceMessage;
 }
 
+async function updatePresenceEmbed(guild, channelId) {
+  const channel = await guild.channels.fetch(channelId);
+  const embed = await buildPresenceEmbed();
+
+  const message = await channel.send({ embeds: [embed] });
+
+  const query = `
+    INSERT INTO embed_messages (name, message_id)
+    VALUES ('presence', ?)
+    ON DUPLICATE KEY UPDATE message_id = VALUES(message_id)
+  `;
+  await db.execute(query, [message.id]);
+
+  return message;
+}
+
 async function handlePresenceCommand(interaction, client) {
   try {
     const staffUser = interaction.user;
@@ -76,4 +92,4 @@ async function handlePresenceCommand(interaction, client) {
   }
 }
 
-module.exports = { handlePresenceCommand };
+module.exports = { handlePresenceCommand, buildPresenceEmbed, getOrCreatePresenceMessage, updatePresenceEmbed };

@@ -21,6 +21,8 @@ const client = new Client({
   ],
 });
 
+const { updatePresenceEmbed, buildPresenceEmbed } = require("./path/to/presence.js");
+
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, "commands");
 const commandFiles = fs
@@ -136,20 +138,18 @@ client.once("ready", async () => {
       }
     }
 
-    let presenceMessage;
     const channel = await guild.channels.fetch(CHANNEL_ID);
-
+    let presenceMessage;
     if (!global.lastMessageId) {
       presenceMessage = await updatePresenceEmbed(guild, CHANNEL_ID);
     } else {
       try {
         presenceMessage = await channel.messages.fetch(global.lastMessageId);
       } catch (err) {
-        console.error("L'embed stocké en BDD est introuvable dans le salon. Un nouveau embed va être créé.");
+        console.error("L'embed stocké en BDD est introuvable dans le salon. Un nouvel embed va être créé.");
         presenceMessage = await updatePresenceEmbed(guild, CHANNEL_ID);
       }
     }
-
     const newEmbed = await buildPresenceEmbed();
     await presenceMessage.edit({ embeds: [newEmbed] });
   } catch (error) {
