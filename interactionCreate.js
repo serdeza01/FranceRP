@@ -6,11 +6,59 @@ const {
   AttachmentBuilder,
 } = require("discord.js");
 
+if (
+  typeof interaction !== "undefined" &&
+  interaction.isModalSubmit() &&
+  interaction.customId === "connectRobloxModal"
+) {
+  // Fonction utilitaire pour générer un code de vérification
+  const generateVerificationCode = (length = 6) => {
+    const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let code = "";
+    for (let i = 0; i < length; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  };
+
+  (async () => {
+    const robloxUsername = interaction.fields.getTextInputValue("roblox_username");
+    const discordId = interaction.user.id;
+    const verificationCode = generateVerificationCode();
+
+    const db = require("./db");
+
+    try {
+      const queryInsert = `
+        INSERT INTO user_roblox (discord_id, roblox_username, verification_code, verified)
+        VALUES (?, ?, ?, 0)
+        ON DUPLICATE KEY UPDATE roblox_username = VALUES(roblox_username), verification_code = VALUES(verification_code), verified = 0
+      `;
+      await db.execute(queryInsert, [discordId, robloxUsername, verificationCode]);
+
+      await interaction.reply({
+        content: `Ton code de vérification est : **${verificationCode}**.
+Copie ce code dans ta bio (ou description) Roblox pour prouver que tu es bien le propriétaire du compte **${robloxUsername}**.
+Ensuite, lance la commande \`/verifyroblox\` pour finaliser la vérification.`,
+        ephemeral: true,
+      });
+    } catch (error) {
+      console.error("Erreur lors de l'enregistrement du compte Roblox :", error);
+      await interaction.reply({
+        content: "Une erreur est survenue lors de l'association de ton compte Roblox.",
+        ephemeral: true,
+      });
+    }
+  })();
+
+  return;
+}
+
 module.exports = async (interaction) => {
+  // Si l'interaction n'est pas un bouton, on ne fait rien (les autres types d'interactions sont gérés ailleurs)
   if (!interaction.isButton()) return;
 
   const guild = interaction.guild;
-
   const categoryId = "1304200059851640863";
 
   if (
@@ -52,19 +100,16 @@ module.exports = async (interaction) => {
             id: interaction.user.id,
             allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"],
           },
-          
           {
             id: "1304151263851708458",
             allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"],
           },
         ],
       });
-      
+
       await ticketChannel.send({ content: `<@${interaction.user.id}>` });
 
-      const imageAttachment = new AttachmentBuilder("./image.png").setName(
-        "image.png"
-      );
+      const imageAttachment = new AttachmentBuilder("./image.png").setName("image.png");
 
       const ticketEmbed = new EmbedBuilder()
         .setDescription(messageContent)
@@ -171,18 +216,6 @@ module.exports = async (interaction) => {
         name: `transcript-${interaction.channel.name}.txt`,
       });
 
-      // Optionnel : sauvegarder le transcript dans votre base de données MySQL (via un appel à votre script PHP ou une requête HTTP)
-      // Par exemple (pseudo-code) :
-      // await saveTranscriptInDatabase(interaction.channel.id, transcriptText);
-      // La fonction saveTranscriptInDatabase devra être implémentée pour faire une requête vers votre API/PHP.
-
-      // Vous pouvez également générer un lien personnalisé pour consulter le transcript,
-      // si votre API retourne une URL spécifique après stockage.
-      // Par exemple :
-      // const transcriptUrl = await getTranscriptUrl(interaction.channel.id);
-
-      // Si vous ne souhaitez pas afficher le lien dans Discord, vous pouvez le logger ou l’envoyer dans un salon spécifique.
-      // Exemple d'envoi dans un salon de logs :
       const transcriptChannel = await interaction.guild.channels.fetch(
         "1304216761930879057"
       );
@@ -195,18 +228,13 @@ module.exports = async (interaction) => {
         console.error("Salon de transcript introuvable !");
       }
     } catch (err) {
-      console.error(
-        "Erreur lors de la création ou de l'envoi du transcript :",
-        err
-      );
+      console.error("Erreur lors de la création ou de l'envoi du transcript :", err);
     }
 
     setTimeout(() => {
       interaction.channel
         .delete()
-        .catch((err) =>
-          console.error("Erreur lors de la suppression du canal :", err)
-        );
+        .catch((err) => console.error("Erreur lors de la suppression du canal :", err));
     }, 3000);
   }
 
@@ -225,9 +253,7 @@ module.exports = async (interaction) => {
     setTimeout(() => {
       interaction.channel
         .delete()
-        .catch((err) =>
-          console.error("Erreur lors de la suppression du canal :", err)
-        );
+        .catch((err) => console.error("Erreur lors de la suppression du canal :", err));
     }, 3000);
   }
 
@@ -236,14 +262,12 @@ module.exports = async (interaction) => {
       await interaction.channel.permissionOverwrites.edit(guild.id, {
         SendMessages: null,
       });
-      await interaction.channel.permissionOverwrites.edit(
-        "1304151263851708458",
-        { SendMessages: true }
-      );
+      await interaction.channel.permissionOverwrites.edit("1304151263851708458", {
+        SendMessages: true,
+      });
 
       await interaction.reply({
-        content:
-          "Ticket réouvert, vous pouvez à nouveau échanger dans ce canal.",
+        content: "Ticket réouvert, vous pouvez à nouveau échanger dans ce canal.",
         ephemeral: true,
       });
     } catch (err) {
