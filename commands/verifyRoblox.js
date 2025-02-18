@@ -1,5 +1,4 @@
 const { SlashCommandBuilder } = require('discord.js');
-const fetch = require('node-fetch');
 const db = require('../db');
 
 module.exports = {
@@ -8,6 +7,7 @@ module.exports = {
         .setDescription('Vérifie que ton compte Roblox contient le code de vérification.'),
 
     async execute(interaction) {
+        const { default: fetch } = await import('node-fetch');
         const discordId = interaction.user.id;
 
         try {
