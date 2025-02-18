@@ -32,6 +32,11 @@ const commandFiles = fs
 
 for (const file of commandFiles) {
   const command = require(path.join(commandsPath, file));
+  // Vérification si la commande possède bien une propriété "data" avec "name"
+  if (!command.data || !command.data.name) {
+    console.warn(`Le fichier ${file} ne possède pas de propriété data.name. Commande ignorée.`);
+    continue;
+  }
   client.commands.set(command.data.name, command);
 }
 
@@ -44,7 +49,7 @@ const staffUsernames = [];
 
 /**
  * Met à jour l'embed de présence dans le salon défini.
- * 
+ *
  * Si le message existe déjà (son ID est dans global.lastMessageId),
  * il sera édité. Sinon, un nouveau message est envoyé et son ID est stocké
  * en BDD.
@@ -178,7 +183,7 @@ client.on("interactionCreate", async (interaction) => {
         ephemeral: true,
       });
     }
-  
+
   } else if (interaction.isModalSubmit()) {
     if (interaction.customId === "connectRobloxModal") {
       const username = interaction.fields.getTextInputValue("roblox_username");
