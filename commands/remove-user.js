@@ -1,27 +1,36 @@
 const { SlashCommandBuilder } = require("discord.js");
+const db = require("../db");
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("remove_user")
-        .setDescription("Retirer une personne du ticket.")
+        .setDescription("Retirer un utilisateur du ticket.")
         .addUserOption((option) =>
-            option.setName("personne").setDescription("Sélectionnez la personne").setRequired(true)
+            option.setName("utilisateur").setDescription("L'utilisateur à retirer du ticket").setRequired(true)
         ),
-    async execute(interaction, { STAFF_ROLE_ID, ticketAuthorizedUsers, updateTicketEmbed, ticketChannelId }) {
+    async execute(interaction) {
+        const [config] = await db.execute("SELECT role_id FROM ticket_config WHERE guild_id = ?", [interaction.guild.id]);
+        if (!config[0]) {
+            return interaction.reply({
+                content: "La configuration du ticket n'a pas été trouvée. Utilisez `/setup_ticket` pour configurer.",
+                ephemeral: true,
+            });
+        }
+
         const member = await interaction.guild.members.fetch(interaction.user.id);
-        if (!member.roles.cache.has(STAFF_ROLE_ID)) {
+        if (!member.roles.cache.has(config[0].staff_role_id)) {
             return interaction.reply({
                 content: "Vous n'avez pas la permission d'utiliser cette commande.",
                 ephemeral: true,
             });
         }
 
-        const targetUser = interaction.options.getUser("personne");
-        ticketAuthorizedUsers.delete(targetUser.tag);
+        const user = interaction.options.getUser("utilisateur");
 
-        await updateTicketEmbed(interaction.guild, ticketChannelId);
+        await interaction.channel.permissionOverwrites.delete(user);
+
         return interaction.reply({
-            content: `${targetUser.username} a été retiré du ticket.`,
+            content: `${user.username} a été retiré du ticket.`,
             ephemeral: true,
         });
     },

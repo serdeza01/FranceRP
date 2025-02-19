@@ -1,27 +1,36 @@
 const { SlashCommandBuilder } = require("discord.js");
+const db = require("../db");
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("remove_role")
         .setDescription("Retirer un rôle du ticket.")
         .addRoleOption((option) =>
-            option.setName("rôle").setDescription("Sélectionnez le rôle à retirer").setRequired(true)
+            option.setName("rôle").setDescription("Le rôle à retirer du ticket").setRequired(true)
         ),
-    async execute(interaction, { STAFF_ROLE_ID, ticketAuthorizedRoles, updateTicketEmbed, ticketChannelId }) {
+    async execute(interaction) {
+        const [config] = await db.execute("SELECT role_id FROM ticket_config WHERE guild_id = ?", [interaction.guild.id]);
+        if (!config[0]) {
+            return interaction.reply({
+                content: "La configuration du ticket n'a pas été trouvée. Utilisez `/setup_ticket` pour configurer.",
+                ephemeral: true,
+            });
+        }
+
         const member = await interaction.guild.members.fetch(interaction.user.id);
-        if (!member.roles.cache.has(STAFF_ROLE_ID)) {
+        if (!member.roles.cache.has(config[0].staff_role_id)) {
             return interaction.reply({
                 content: "Vous n'avez pas la permission d'utiliser cette commande.",
                 ephemeral: true,
             });
         }
 
-        const targetRole = interaction.options.getRole("rôle");
-        ticketAuthorizedRoles.delete(targetRole.name);
+        const role = interaction.options.getRole("rôle");
 
-        await updateTicketEmbed(interaction.guild, ticketChannelId);
+        await interaction.channel.permissionOverwrites.delete(role);
+
         return interaction.reply({
-            content: `Le rôle ${targetRole.name} a été retiré du ticket.`,
+            content: `Le rôle ${role.name} a été retiré du ticket.`,
             ephemeral: true,
         });
     },
