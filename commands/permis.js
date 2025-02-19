@@ -1,5 +1,4 @@
-const { SlashCommandBuilder } = require("@discordjs/builders");
-const { EmbedBuilder, AttachmentBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require("discord.js");
 const db = require("../db");
 
 module.exports = {
@@ -7,24 +6,25 @@ module.exports = {
     .setName("permis")
     .setDescription("Affiche ton permis de conduire"),
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: false });
+    await interaction.deferReply({ ephemeral: true });
 
     const discordId = interaction.user.id;
+    const guildId = interaction.guild.id;
 
     try {
-      const [results] = await db
-        .promise()
-        .execute("SELECT * FROM permis WHERE discord_id = ?", [discordId]);
+      const [results] = await db.execute(
+        "SELECT * FROM permis WHERE guild_id = ? AND discord_id = ?",
+        [guildId, discordId]
+      );
 
       if (results.length === 0) {
         return interaction.editReply({
-          content: "Tu n’as pas de permis enregistré.",
+          content: "Tu n’as pas de permis enregistré sur ce serveur.",
         });
       }
 
       const permis = results[0];
       const file = new AttachmentBuilder(permis.image_path);
-
       const embed = new EmbedBuilder()
         .setTitle("📄 Permis de conduire")
         .setColor("#ff69b4")

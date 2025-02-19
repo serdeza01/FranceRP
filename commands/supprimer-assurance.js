@@ -11,9 +11,14 @@ module.exports = {
         .setDescription("L'utilisateur dont on supprime la carte d'assurance")
         .setRequired(true)
     ),
-
   async execute(interaction) {
-    if (!interaction.member.roles.cache.has("1328419821901189170")) {
+    const [assuranceRoles] = await db.execute(
+      "SELECT role_id FROM role_permissions WHERE guild_id = ? AND permission_type = 'assurance'",
+      [interaction.guild.id]
+    );
+    const member = interaction.member;
+    const hasPermission = assuranceRoles.some((role) => member.roles.cache.has(role.role_id));
+    if (!hasPermission) {
       return interaction.reply({
         content: "Vous n'avez pas la permission de supprimer l'assurance.",
         ephemeral: true,
@@ -23,9 +28,9 @@ module.exports = {
     const user = interaction.options.getUser("utilisateur");
 
     try {
-      const [result] = await db.promise().execute(
-        "DELETE FROM assurance WHERE discord_id = ?",
-        [user.id]
+      const [result] = await db.execute(
+        "DELETE FROM assurance WHERE guild_id = ? AND discord_id = ?",
+        [interaction.guild.id, user.id]
       );
 
       if (result.affectedRows === 0) {
