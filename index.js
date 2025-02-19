@@ -24,6 +24,10 @@ const client = new Client({
   ],
 });
 
+process.on("uncaughtException", (err) => {
+  console.error("Erreur non gérée :", err);
+});
+
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, "commands");
 const commandFiles = fs
@@ -114,7 +118,6 @@ async function updatePresenceEmbedMessage(guild, channelId) {
   }
 }
 
-// ***** Nouvelle fonction pour mettre à jour l'embed ticket *****
 async function updateTicketEmbed(guild, channelId) {
   try {
     const channel = await guild.channels.fetch(channelId);
@@ -127,7 +130,6 @@ async function updateTicketEmbed(guild, channelId) {
     console.error("Erreur dans updateTicketEmbed :", error);
   }
 }
-// ***********************************************
 
 client.once("ready", async () => {
   console.log(`Bot connecté en tant que ${client.user.tag}`);
@@ -195,7 +197,7 @@ client.on("interactionCreate", async (interaction) => {
       if (
         ["add_role", "remove_role", "add_user", "remove_user"].includes(interaction.commandName)
       ) {
-        await command.execute(interaction, {
+        await command.execute(interaction, client, {
           STAFF_ROLE_ID,
           ticketAuthorizedRoles: global.ticketAuthorizedRoles,
           ticketAuthorizedUsers: global.ticketAuthorizedUsers,
@@ -203,7 +205,7 @@ client.on("interactionCreate", async (interaction) => {
           ticketChannelId,
         });
       } else {
-        await command.execute(interaction, {
+        await command.execute(interaction, client, {
           staffStatus: global.staffStatus,
           updatePresenceEmbed: updatePresenceEmbedMessage,
           CHANNEL_ID,

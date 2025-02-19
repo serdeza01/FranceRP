@@ -6,6 +6,7 @@ const {
   AttachmentBuilder,
 } = require("discord.js");
 
+const db = require("./db");
 if (
   typeof interaction !== "undefined" &&
   interaction.isModalSubmit() &&
@@ -24,8 +25,6 @@ if (
     const robloxUsername = interaction.fields.getTextInputValue("roblox_username");
     const discordId = interaction.user.id;
     const verificationCode = generateVerificationCode();
-
-    const db = require("./db");
 
     try {
       const queryInsert = `
