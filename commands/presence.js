@@ -4,10 +4,11 @@ const db = require("../db");
 async function updatePresenceEmbed(guild, channelId) {
   try {
     const [rows] = await db.execute(
-      "SELECT user_id, username FROM staff_presence WHERE present = true"
+      "SELECT user_id, username FROM staff_presence WHERE present = true AND guild_id = ?",
+      [guild.id]
     );
 
-    const availableStaff = rows.map(row => `- <@${row.user_id}>`).join("\n") || "Aucun";
+    const availableStaff = rows.map(row => `- <@${row.user_id}>`).join("\n") || "Aucun staff disponible.";
 
     const file = new AttachmentBuilder("./image.png");
     const embed = new EmbedBuilder()
@@ -69,10 +70,11 @@ module.exports = {
     try {
       const status = interaction.options.getString("statut");
       const user = interaction.user;
+      const guildId = interaction.guild.id;
 
       const [config] = await db.execute(
         "SELECT role_id, channel_id FROM presence_config WHERE guild_id = ?",
-        [interaction.guild.id]
+        [guildId]
       );
 
       if (config.length === 0) {
@@ -93,14 +95,14 @@ module.exports = {
       }
 
       await db.execute(
-        "INSERT INTO staff_presence (user_id, username, present) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE username = VALUES(username), present = VALUES(present)",
-        [user.id, user.username, status === "disponible"]
+        "INSERT INTO staff_presence (user_id, username, present, guild_id) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE username = VALUES(username), present = VALUES(present)",
+        [user.id, user.username, status === "disponible", guildId]
       );
 
       await updatePresenceEmbed(interaction.guild, channel_id);
 
       await interaction.reply({
-        content: `Vous êtes maintenant marqué comme ${status}.`,
+        content: `Vous êtes maintenant marqué comme ${status} sur ce serveur.`,
         ephemeral: true,
       });
     } catch (error) {
