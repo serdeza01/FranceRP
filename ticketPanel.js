@@ -52,8 +52,20 @@ async function sendTicketPanel(client) {
 
     const message = await channel.send({ embeds: [embed], components: [row] });
 
+    const embed2 = new EmbedBuilder()
+      .setTitle("🎟️ Ticket ouvert")
+      .setDescription(ticketMessage)
+      .addFields(
+        { name: "👤 Utilisateur", value: `<@${userId}>`, inline: true },
+        { name: "📅 Date", value: new Date().toLocaleString(), inline: true }
+      )
+      .setColor("#00ff00")
+      .setFooter({ text: "Made by serdeza" });
+
+    await channel.send({ embeds: [embed2] });
+
     await db.execute(
-      "INSERT INTO embed_messages (name, message_id, channel_id) VALUES ('ticket_panel', ?, ?)",
+      "INSERT INTO embed_messages (name, message_id, channel_id, guild_id) VALUES ('ticket_panel', ?, ?, ?)",
       [message.id, channel_id]
     );
 
