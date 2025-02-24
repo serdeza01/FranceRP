@@ -47,12 +47,10 @@ for (const file of commandFiles) {
 global.staffStatus = new Map();
 global.lastMessageId = null;
 
-// ***** Nouvelle partie pour les tickets *****
 global.ticketAuthorizedRoles = new Set();
 global.ticketAuthorizedUsers = new Set();
 // Remplace "VOTRE_TICKET_CHANNEL_ID" par l'ID réel du salon des tickets
 const ticketChannelId = "VOTRE_TICKET_CHANNEL_ID"; 
-// ***********************************************
 
 const STAFF_ROLE_ID = "1304151263851708458";
 const CHANNEL_ID = "1337086501778882580";
@@ -65,8 +63,8 @@ const staffUsernames = [];
  * il sera édité. Sinon, un nouveau message est envoyé et son ID est stocké
  * en BDD.
  *
- * @param {Guild} guild Le serveur Discord.
- * @param {string} channelId L'ID du salon où envoyer l'embed.
+ * @param {Guild} guild
+ * @param {string} channelId
  */
 async function updatePresenceEmbedMessage(guild, channelId) {
   try {

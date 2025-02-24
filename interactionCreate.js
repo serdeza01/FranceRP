@@ -53,19 +53,16 @@ Ensuite, lance la commande \`/verifyroblox\` pour finaliser la vérification.`,
 }
 
 module.exports = async (interaction) => {
-  // Gestion des commandes slash
   if (interaction.isCommand()) {
     // Vous pouvez ajouter ici la gestion d'autres commandes slash si nécessaire
     return;
   }
 
-  // Gestion des boutons
   if (interaction.isButton()) {
     const guild = interaction.guild;
 
-    // Gestion des boutons de ticket
     if (interaction.customId.startsWith('ticket_')) {
-      const ticketIndex = interaction.customId.split('_')[1]; // Récupère l'index du bouton
+      const ticketIndex = interaction.customId.split('_')[1];
       const [rows] = await db.execute("SELECT category_id, role_id, ticket_messages FROM ticket_config WHERE guild_id = ?", [guild.id]);
 
       if (rows.length === 0) {
@@ -81,7 +78,6 @@ module.exports = async (interaction) => {
       const sanitizedDisplayName = interaction.member.displayName.replace(/\s+/g, '-').toLowerCase();
       const channelName = `ticket-${sanitizedDisplayName}`;
 
-      // Récupérer tous les salons dans la catégorie
       const category = guild.channels.cache.get(category_id);
       if (!category) return console.error("La catégorie n'existe pas.");
 
@@ -142,7 +138,6 @@ module.exports = async (interaction) => {
       }
     }
 
-    // Gestion de la fermeture des tickets
     if (interaction.customId === "close_ticket") {
       const ticketChannel = interaction.channel;
       const [config] = await db.execute("SELECT role_id FROM ticket_config WHERE guild_id = ?", [guild.id]);
@@ -180,7 +175,6 @@ module.exports = async (interaction) => {
       });
     }
 
-    // Fermeture définitive du ticket avec transcript
     if (interaction.customId === "final_close_ticket") {
       const [config] = await db.execute("SELECT role_id, transcript_channel_id FROM ticket_config WHERE guild_id = ?", [guild.id]);
       const { role_id, transcript_channel_id } = config[0];
@@ -234,7 +228,6 @@ module.exports = async (interaction) => {
       }, 3000);
     }
 
-    // Fermeture définitive du ticket sans transcript
     if (interaction.customId === "close_ticket_no_transcript") {
       const [config] = await db.execute("SELECT role_id FROM ticket_config WHERE guild_id = ?", [guild.id]);
       const { role_id } = config[0];
@@ -256,7 +249,6 @@ module.exports = async (interaction) => {
       }, 3000);
     }
 
-    // Réouverture du ticket
     if (interaction.customId === "reopen_ticket") {
       const [config] = await db.execute("SELECT role_id FROM ticket_config WHERE guild_id = ?", [guild.id]);
       const { role_id } = config[0];
