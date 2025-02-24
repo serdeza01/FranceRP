@@ -78,9 +78,24 @@ module.exports = async (interaction) => {
       const { category_id, role_id, ticket_messages } = rows[0];
       const ticketMessage = JSON.parse(ticket_messages)[ticketIndex];
 
-      // Créer le ticket dans la catégorie spécifiée
       const sanitizedDisplayName = interaction.member.displayName.replace(/\s+/g, '-').toLowerCase();
       const channelName = `ticket-${sanitizedDisplayName}`;
+
+      // Récupérer tous les salons dans la catégorie
+      const category = guild.channels.cache.get(category_id);
+      if (!category) return console.error("La catégorie n'existe pas.");
+
+      const userTickets = category.children.filter(channel => {
+        return channel.name.startsWith(`ticket-`) && channel.name.includes(sanitizedDisplayName);
+      });
+
+      if (userTickets.size > 0) {
+        await interaction.reply({
+          content: "Vous avez déjà un ticket ouvert. Vous ne pouvez pas en créer un autre.",
+          ephemeral: true,
+        });
+        return;
+      }
 
       try {
         const ticketChannel = await guild.channels.create({
