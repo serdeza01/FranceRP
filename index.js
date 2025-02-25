@@ -14,6 +14,7 @@ const { sendTicketPanel } = require("./ticketPanel");
 
 // Configuration de la base de données
 const db = new Database('reactions.db');
+global.database = db;
 db.prepare(`
   CREATE TABLE IF NOT EXISTS reaction_channels (
     channel_id TEXT PRIMARY KEY,
