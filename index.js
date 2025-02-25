@@ -101,17 +101,12 @@ for (const file of commandFiles) {
 client.once("ready", async () => {
   console.log(`Bot connecté en tant que ${client.user.tag}`);
 
-  const guild = client.guilds.cache.first();
-  if (!guild) {
-    console.log("Le bot n'est dans aucun serveur.");
-    return;
-  }
-
   try {
-    await guild.commands.set(client.commands.map((command) => command.data));
-    console.log("Commandes enregistrées !");
+    // Enregistrement global des commandes
+    await client.application.commands.set(client.commands.map((command) => command.data));
+    console.log("Commandes enregistrées globalement !");
   } catch (error) {
-    console.error("Erreur lors de l'enregistrement des commandes :", error);
+    console.error("Erreur lors de l'enregistrement des commandes globales :", error);
   }
 
   try {
