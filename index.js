@@ -10,10 +10,35 @@ const path = require("path");
 require("dotenv").config();
 
 const { sendTicketPanel } = require("./ticketPanel");
-const db = require("./db");
+const Database = require("better-sqlite3");
 const axios = require("axios");
 
-const { updatePresenceEmbed, buildPresenceEmbed } = require("./commands/presence");
+const {
+  updatePresenceEmbed,
+  buildPresenceEmbed,
+} = require("./commands/presence");
+
+// Initialisation de la base de données
+const db = new Database("database.db");
+global.database = db; // Export global
+
+// Création des tables si inexistantes
+db.prepare(
+  `
+  CREATE TABLE IF NOT EXISTS presence_embed (
+    channel_id TEXT PRIMARY KEY,
+    message_id TEXT
+  )`
+).run();
+
+db.prepare(
+  `
+  CREATE TABLE IF NOT EXISTS user_roblox (
+    discord_id TEXT PRIMARY KEY,
+    roblox_username TEXT,
+    roblox_id TEXT
+  )`
+).run();
 
 const client = new Client({
   intents: [
@@ -36,9 +61,10 @@ const commandFiles = fs
 
 for (const file of commandFiles) {
   const command = require(path.join(commandsPath, file));
-  // Vérification si la commande possède bien une propriété "data" avec "name"
   if (!command.data || !command.data.name) {
-    console.warn(`Le fichier ${file} ne possède pas de propriété data.name. Commande ignorée.`);
+    console.warn(
+      `Le fichier ${file} ne possède pas de propriété data.name. Commande ignorée.`
+    );
     continue;
   }
   client.commands.set(command.data.name, command);
@@ -46,26 +72,14 @@ for (const file of commandFiles) {
 
 global.staffStatus = new Map();
 global.lastMessageId = null;
-
 global.ticketAuthorizedRoles = new Set();
 global.ticketAuthorizedUsers = new Set();
-// Remplace "VOTRE_TICKET_CHANNEL_ID" par l'ID réel du salon des tickets
-const ticketChannelId = "VOTRE_TICKET_CHANNEL_ID"; 
+global.reactionChannels = new Set();
 
 const STAFF_ROLE_ID = "1304151263851708458";
 const CHANNEL_ID = "1337086501778882580";
 const staffUsernames = [];
 
-/**
- * Met à jour l'embed de présence dans le salon défini.
- *
- * Si le message existe déjà (son ID est dans global.lastMessageId),
- * il sera édité. Sinon, un nouveau message est envoyé et son ID est stocké
- * en BDD.
- *
- * @param {Guild} guild
- * @param {string} channelId
- */
 async function updatePresenceEmbedMessage(guild, channelId) {
   try {
     const availableStaff = [];
@@ -97,7 +111,9 @@ async function updatePresenceEmbedMessage(guild, channelId) {
 
     let sentMessage;
     if (global.lastMessageId) {
-      sentMessage = await channel.messages.fetch(global.lastMessageId).catch(() => null);
+      sentMessage = await channel.messages
+        .fetch(global.lastMessageId)
+        .catch(() => null);
       if (sentMessage) {
         await sentMessage.edit({ embeds: [embed], files: [file] });
       }
@@ -107,9 +123,13 @@ async function updatePresenceEmbedMessage(guild, channelId) {
       const newMessage = await channel.send({ embeds: [embed], files: [file] });
       global.lastMessageId = newMessage.id;
 
-      const query =
-        "INSERT INTO presence_embed (channel_id, message_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE message_id = VALUES(message_id)";
-      await db.execute(query, [channelId, newMessage.id]);
+      const stmt = db.prepare(`
+        INSERT INTO presence_embed (channel_id, message_id) 
+        VALUES (?, ?) 
+        ON CONFLICT(channel_id) 
+        DO UPDATE SET message_id = excluded.message_id
+      `);
+      stmt.run(channelId, newMessage.id);
     }
   } catch (error) {
     console.error("Erreur lors de la mise à jour de l'embed :", error);
@@ -146,15 +166,24 @@ client.once("ready", async () => {
   }
 
   try {
-    const [rows] = await db.execute(
-      "SELECT message_id FROM presence_embed WHERE channel_id = ? LIMIT 1",
-      [CHANNEL_ID]
-    );
-    if (rows.length > 0 && rows[0].message_id) {
-      global.lastMessageId = rows[0].message_id;
+    const row = db
+      .prepare(
+        `
+      SELECT message_id 
+      FROM presence_embed 
+      WHERE channel_id = ?
+    `
+      )
+      .get(CHANNEL_ID);
+
+    if (row && row.message_id) {
+      global.lastMessageId = row.message_id;
     }
   } catch (error) {
-    console.error("Erreur lors de la récupération de l'embed de présence en BDD :", error);
+    console.error(
+      "Erreur lors de la récupération de l'embed de présence en BDD :",
+      error
+    );
   }
 
   try {
@@ -174,14 +203,19 @@ client.once("ready", async () => {
       try {
         presenceMessage = await channel.messages.fetch(global.lastMessageId);
       } catch (err) {
-        console.error("L'embed stocké en BDD est introuvable dans le salon. Un nouvel embed va être créé.");
+        console.error(
+          "L'embed stocké en BDD est introuvable. Création d'un nouvel embed..."
+        );
         presenceMessage = await updatePresenceEmbedMessage(guild, CHANNEL_ID);
       }
     }
     const newEmbed = await buildPresenceEmbed();
     await presenceMessage.edit({ embeds: [newEmbed] });
   } catch (error) {
-    console.error("Erreur lors de la récupération des membres ou mise à jour de l'embed :", error);
+    console.error(
+      "Erreur lors de la récupération des membres ou mise à jour de l'embed :",
+      error
+    );
   }
 
   await sendTicketPanel(client);
@@ -191,30 +225,25 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.isCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
+
     try {
-      if (
-        ["add_role", "remove_role", "add_user", "remove_user"].includes(interaction.commandName)
-      ) {
-        await command.execute(interaction, client, {
-          STAFF_ROLE_ID,
-          ticketAuthorizedRoles: global.ticketAuthorizedRoles,
-          ticketAuthorizedUsers: global.ticketAuthorizedUsers,
-          updateTicketEmbed,
-          ticketChannelId,
-        });
-      } else {
-        await command.execute(interaction, client, {
-          staffStatus: global.staffStatus,
-          updatePresenceEmbed: updatePresenceEmbedMessage,
-          CHANNEL_ID,
-          STAFF_ROLE_ID,
-        });
-      }
+      const context = {
+        STAFF_ROLE_ID,
+        ticketAuthorizedRoles: global.ticketAuthorizedRoles,
+        ticketAuthorizedUsers: global.ticketAuthorizedUsers,
+        updateTicketEmbed: () =>
+          updateTicketEmbed(interaction.guild, interaction.channelId),
+        staffStatus: global.staffStatus,
+        updatePresenceEmbed: updatePresenceEmbedMessage,
+        CHANNEL_ID,
+      };
+
+      await command.execute(interaction, client, context);
     } catch (error) {
       console.error(error);
       await interaction.reply({
         content: "Une erreur est survenue.",
-        ephemeral: true,
+        flags: 1 << 6, // Équivalent EPHEMERAL
       });
     }
   } else if (interaction.isModalSubmit()) {
@@ -224,36 +253,40 @@ client.on("interactionCreate", async (interaction) => {
 
       try {
         const response = await axios.get(
-          `https://api.roblox.com/users/get-by-username?username=${encodeURIComponent(username)}`
+          `https://api.roblox.com/users/get-by-username?username=${encodeURIComponent(
+            username
+          )}`
         );
 
         if (!response.data || response.data.Id === 0) {
           return interaction.reply({
-            content: "Compte Roblox introuvable. Vérifie bien le nom d'utilisateur.",
-            ephemeral: true,
+            content:
+              "Compte Roblox introuvable. Vérifie bien le nom d'utilisateur.",
+            flags: 1 << 6,
           });
         }
-        const robloxId = response.data.Id;
-        const querySelect = "SELECT * FROM user_roblox WHERE discord_id = ?";
-        const [rows] = await db.execute(querySelect, [discordId]);
 
-        if (rows && rows.length > 0) {
-          const queryUpdate = "UPDATE user_roblox SET roblox_username = ?, roblox_id = ? WHERE discord_id = ?";
-          await db.execute(queryUpdate, [username, robloxId, discordId]);
-        } else {
-          const queryInsert = "INSERT INTO user_roblox (discord_id, roblox_username, roblox_id) VALUES (?, ?, ?)";
-          await db.execute(queryInsert, [discordId, username, robloxId]);
-        }
+        const robloxId = response.data.Id;
+        const stmt = db.prepare(`
+          INSERT INTO user_roblox (discord_id, roblox_username, roblox_id) 
+          VALUES (?, ?, ?) 
+          ON CONFLICT(discord_id) 
+          DO UPDATE SET 
+            roblox_username = excluded.roblox_username,
+            roblox_id = excluded.roblox_id
+        `);
+        stmt.run(discordId, username, robloxId);
 
         await interaction.reply({
-          content: `Ton compte Roblox **${username}** (ID: ${robloxId}) a été trouvé et associé à ton compte Discord !`,
-          ephemeral: true,
+          content: `Ton compte Roblox **${username}** (ID: ${robloxId}) a été associé à ton compte Discord !`,
+          flags: 1 << 6,
         });
       } catch (error) {
         console.error("Erreur lors de la connexion du compte Roblox :", error);
-        return interaction.reply({
-          content: "Une erreur est survenue lors de la connexion de ton compte Roblox. Merci de réessayer plus tard.",
-          ephemeral: true,
+        await interaction.reply({
+          content:
+            "Erreur lors de la connexion du compte Roblox. Réessayez plus tard.",
+          flags: 1 << 6,
         });
       }
     }
