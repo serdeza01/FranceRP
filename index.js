@@ -8,37 +8,41 @@ const {
 const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
-
-const { sendTicketPanel } = require("./ticketPanel");
-const Database = require("better-sqlite3");
 const axios = require("axios");
 
+const { sendTicketPanel } = require("./ticketPanel");
 const {
   updatePresenceEmbed,
   buildPresenceEmbed,
 } = require("./commands/presence");
 
-// Initialisation de la base de données
-const db = new Database("database.db");
-global.database = db; // Export global
+const db = require("./db");
+global.database = db;
 
-// Création des tables si inexistantes
-db.prepare(
-  `
-  CREATE TABLE IF NOT EXISTS presence_embed (
-    channel_id TEXT PRIMARY KEY,
-    message_id TEXT
-  )`
-).run();
+async function initDatabase() {
+  try {
+    await db
+      .promise()
+      .execute(
+        `CREATE TABLE IF NOT EXISTS presence_embed (
+          channel_id VARCHAR(255) PRIMARY KEY,
+          message_id VARCHAR(255)
+        )`
+      );
 
-db.prepare(
-  `
-  CREATE TABLE IF NOT EXISTS user_roblox (
-    discord_id TEXT PRIMARY KEY,
-    roblox_username TEXT,
-    roblox_id TEXT
-  )`
-).run();
+    await db.promise().execute(
+      `CREATE TABLE IF NOT EXISTS user_roblox (
+          discord_id VARCHAR(255) PRIMARY KEY,
+          roblox_username VARCHAR(255),
+          roblox_id VARCHAR(255)
+        )`
+    );
+
+    console.log("Tables créées (si elles n'existaient pas déjà)");
+  } catch (error) {
+    console.error("Erreur lors de l'initialisation de la DB:", error);
+  }
+}
 
 const client = new Client({
   intents: [
@@ -110,8 +114,9 @@ async function updatePresenceEmbedMessage(guild, channelId) {
       });
 
     let sentMessage;
+    const channelObj = await client.channels.fetch(channelId);
     if (global.lastMessageId) {
-      sentMessage = await channel.messages
+      sentMessage = await channelObj.messages
         .fetch(global.lastMessageId)
         .catch(() => null);
       if (sentMessage) {
@@ -120,17 +125,21 @@ async function updatePresenceEmbedMessage(guild, channelId) {
     }
 
     if (!global.lastMessageId || !sentMessage) {
-      const newMessage = await channel.send({ embeds: [embed], files: [file] });
+      const newMessage = await channelObj.send({ embeds: [embed], files: [file] });
       global.lastMessageId = newMessage.id;
 
-      const stmt = db.prepare(`
+      await db.promise().execute(
+        `
         INSERT INTO presence_embed (channel_id, message_id) 
-        VALUES (?, ?) 
-        ON CONFLICT(channel_id) 
-        DO UPDATE SET message_id = excluded.message_id
-      `);
-      stmt.run(channelId, newMessage.id);
+        VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE message_id = VALUES(message_id)
+      `,
+        [channelId, newMessage.id]
+      );
+      return newMessage;
     }
+
+    return sentMessage;
   } catch (error) {
     console.error("Erreur lors de la mise à jour de l'embed :", error);
   }
@@ -153,25 +162,30 @@ client.once("ready", async () => {
   console.log(`Bot connecté en tant que ${client.user.tag}`);
 
   try {
-    await client.application.commands.set(client.commands.map((command) => command.data));
+    await client.application.commands.set(
+      client.commands.map((command) => command.data)
+    );
     console.log("Commandes enregistrées globalement !");
   } catch (error) {
-    console.error("Erreur lors de l'enregistrement des commandes globales :", error);
+    console.error(
+      "Erreur lors de l'enregistrement des commandes globales :",
+      error
+    );
   }
 
   try {
-    const row = db
-      .prepare(
+    const [rows] = await db
+      .promise()
+      .execute(
         `
-      SELECT message_id 
-      FROM presence_embed 
-      WHERE channel_id = ?
-    `
-      )
-      .get(CHANNEL_ID);
-
-    if (row && row.message_id) {
-      global.lastMessageId = row.message_id;
+        SELECT message_id 
+        FROM presence_embed 
+        WHERE channel_id = ?
+      `,
+        [CHANNEL_ID]
+      );
+    if (rows && rows.length > 0 && rows[0].message_id) {
+      global.lastMessageId = rows[0].message_id;
     }
   } catch (error) {
     console.error(
@@ -181,6 +195,11 @@ client.once("ready", async () => {
   }
 
   try {
+    const guild = client.guilds.cache.first();
+    if (!guild) {
+      console.error("Le bot n'est dans aucun serveur.");
+      return;
+    }
     const members = await guild.members.fetch();
     for (const username of staffUsernames) {
       const member = members.find((m) => m.user.username === username);
@@ -204,7 +223,9 @@ client.once("ready", async () => {
       }
     }
     const newEmbed = await buildPresenceEmbed();
-    await presenceMessage.edit({ embeds: [newEmbed] });
+    if (presenceMessage) {
+      await presenceMessage.edit({ embeds: [newEmbed] });
+    }
   } catch (error) {
     console.error(
       "Erreur lors de la récupération des membres ou mise à jour de l'embed :",
@@ -237,7 +258,7 @@ client.on("interactionCreate", async (interaction) => {
       console.error(error);
       await interaction.reply({
         content: "Une erreur est survenue.",
-        flags: 1 << 6, // Équivalent EPHEMERAL
+        flags: 1 << 6, // Équivalent d'EPHEMERAL
       });
     }
   } else if (interaction.isModalSubmit()) {
@@ -261,15 +282,16 @@ client.on("interactionCreate", async (interaction) => {
         }
 
         const robloxId = response.data.Id;
-        const stmt = db.prepare(`
+        await db.promise().execute(
+          `
           INSERT INTO user_roblox (discord_id, roblox_username, roblox_id) 
-          VALUES (?, ?, ?) 
-          ON CONFLICT(discord_id) 
-          DO UPDATE SET 
-            roblox_username = excluded.roblox_username,
-            roblox_id = excluded.roblox_id
-        `);
-        stmt.run(discordId, username, robloxId);
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE 
+            roblox_username = VALUES(roblox_username),
+            roblox_id = VALUES(roblox_id)
+        `,
+          [discordId, username, robloxId]
+        );
 
         await interaction.reply({
           content: `Ton compte Roblox **${username}** (ID: ${robloxId}) a été associé à ton compte Discord !`,
@@ -290,4 +312,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-client.login(process.env.TOKEN);
+(async () => {
+  await initDatabase();
+  client.login(process.env.TOKEN);
+})();
