@@ -102,7 +102,6 @@ client.once("ready", async () => {
   console.log(`Bot connecté en tant que ${client.user.tag}`);
 
   try {
-    // Enregistrement global des commandes
     await client.application.commands.set(client.commands.map((command) => command.data));
     console.log("Commandes enregistrées globalement !");
   } catch (error) {
