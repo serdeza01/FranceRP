@@ -1,4 +1,9 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require("discord.js");
+const {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+} = require("discord.js");
 const db = require("./db");
 
 async function sendTicketPanel(client) {
@@ -14,9 +19,8 @@ async function sendTicketPanel(client) {
       return;
     }
 
-    const { channel_id, panel_message, button_names, ticket_messages } = rows[0];
+    const { channel_id, panel_message, button_names } = rows[0];
     const buttonNames = JSON.parse(button_names);
-    const ticketMessages = JSON.parse(ticket_messages);
 
     const channel = await client.channels.fetch(channel_id);
     if (!channel) {
@@ -30,7 +34,9 @@ async function sendTicketPanel(client) {
     );
 
     if (existingMessages.length > 0) {
-      console.log("Un panneau de ticket existe déjà. Aucun nouveau panneau ne sera envoyé.");
+      console.log(
+        "Un panneau de ticket existe déjà. Aucun nouveau panneau ne sera envoyé."
+      );
       return;
     }
 
@@ -52,21 +58,9 @@ async function sendTicketPanel(client) {
 
     const message = await channel.send({ embeds: [embed], components: [row] });
 
-    const embed2 = new EmbedBuilder()
-      .setTitle("🎟️ Ticket ouvert")
-      .setDescription(ticketMessage)
-      .addFields(
-        { name: "👤 Utilisateur", value: `<@${userId}>`, inline: true },
-        { name: "📅 Date", value: new Date().toLocaleString(), inline: true }
-      )
-      .setColor("#00ff00")
-      .setFooter({ text: "Made by serdeza" });
-
-    await channel.send({ embeds: [embed2] });
-
     await db.execute(
       "INSERT INTO embed_messages (name, message_id, channel_id, guild_id) VALUES ('ticket_panel', ?, ?, ?)",
-      [message.id, channel_id]
+      [message.id, channel_id, guild.id]
     );
 
     console.log("Panneau de ticket envoyé avec succès.");

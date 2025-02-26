@@ -22,7 +22,6 @@ global.database = db;
 async function initDatabase() {
   try {
     await db
-      .promise()
       .execute(
         `CREATE TABLE IF NOT EXISTS presence_embed (
           channel_id VARCHAR(255) PRIMARY KEY,
@@ -30,7 +29,7 @@ async function initDatabase() {
         )`
       );
 
-    await db.promise().execute(
+    await db.execute(
       `CREATE TABLE IF NOT EXISTS user_roblox (
           discord_id VARCHAR(255) PRIMARY KEY,
           roblox_username VARCHAR(255),
@@ -175,7 +174,6 @@ client.once("ready", async () => {
 
   try {
     const [rows] = await db
-      .promise()
       .execute(
         `
         SELECT message_id 

@@ -60,31 +60,33 @@ module.exports = async (interaction) => {
 
   if (interaction.isButton()) {
     const guild = interaction.guild;
-
+  
     if (interaction.customId.startsWith('ticket_')) {
       const ticketIndex = interaction.customId.split('_')[1];
       const [rows] = await db.execute("SELECT category_id, role_id, ticket_messages FROM ticket_config WHERE guild_id = ?", [guild.id]);
-
+    
       if (rows.length === 0) {
         return interaction.reply({
           content: "La configuration des tickets n'a pas été trouvée.",
           ephemeral: true,
         });
       }
-
+    
       const { category_id, role_id, ticket_messages } = rows[0];
       const ticketMessage = JSON.parse(ticket_messages)[ticketIndex];
-
+    
       const sanitizedDisplayName = interaction.member.displayName.replace(/\s+/g, '-').toLowerCase();
       const channelName = `ticket-${sanitizedDisplayName}`;
-
+    
       const category = guild.channels.cache.get(category_id);
       if (!category) return console.error("La catégorie n'existe pas.");
-
-      const userTickets = category.children.filter(channel => {
-        return channel.name.startsWith(`ticket-`) && channel.name.includes(sanitizedDisplayName);
-      });
-
+    
+      const userTickets = guild.channels.cache.filter(channel =>
+        channel.parentId === category.id &&
+        channel.name.startsWith(`ticket-`) &&
+        channel.name.includes(sanitizedDisplayName)
+      );
+    
       if (userTickets.size > 0) {
         await interaction.reply({
           content: "Vous avez déjà un ticket ouvert. Vous ne pouvez pas en créer un autre.",
@@ -92,7 +94,7 @@ module.exports = async (interaction) => {
         });
         return;
       }
-
+    
       try {
         const ticketChannel = await guild.channels.create({
           name: channelName,
@@ -114,17 +116,25 @@ module.exports = async (interaction) => {
         });
 
         await ticketChannel.send({ content: `<@${interaction.user.id}>` });
-        await ticketChannel.send({ content: ticketMessage });
-
+    
+        const ticketEmbed = new EmbedBuilder()
+          .setTitle("Ticket Ouvert")
+          .setDescription(ticketMessage)
+          .setColor(0x00aaff)
+          .setFooter({ text: `Ticket créé par ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+          .setTimestamp();
+    
+        await ticketChannel.send({ embeds: [ticketEmbed] });
+    
         const closeButtonRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId("close_ticket")
             .setLabel("Fermer le ticket")
             .setStyle(ButtonStyle.Danger)
         );
-
+    
         await ticketChannel.send({ components: [closeButtonRow] });
-
+    
         await interaction.reply({
           content: `Votre ticket a été créé : ${ticketChannel}`,
           ephemeral: true,
@@ -137,7 +147,7 @@ module.exports = async (interaction) => {
         });
       }
     }
-
+    
     if (interaction.customId === "close_ticket") {
       const ticketChannel = interaction.channel;
       const [config] = await db.execute("SELECT role_id FROM ticket_config WHERE guild_id = ?", [guild.id]);

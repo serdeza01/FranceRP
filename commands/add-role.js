@@ -18,12 +18,12 @@ module.exports = {
         }
 
         const member = await interaction.guild.members.fetch(interaction.user.id);
-        if (!member.roles.cache.has(config[0].staff_role_id)) {
+        if (!member.roles.cache.has(config[0].role_id)) {
             return interaction.reply({
                 content: "Vous n'avez pas la permission d'utiliser cette commande.",
                 ephemeral: true,
             });
-        }
+        }        
 
         const role = interaction.options.getRole("rôle");
 
