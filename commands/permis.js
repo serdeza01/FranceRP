@@ -6,7 +6,7 @@ module.exports = {
     .setName("permis")
     .setDescription("Affiche ton permis de conduire"),
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ ephemeral: false });
 
     const discordId = interaction.user.id;
     const guildId = interaction.guild.id;

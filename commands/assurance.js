@@ -6,7 +6,7 @@ module.exports = {
     .setName("assurance")
     .setDescription("Affiche ta carte d'assurance"),
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ ephemeral: false });
 
     const discordId = interaction.user.id;
     const guildId = interaction.guild.id;
