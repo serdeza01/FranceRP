@@ -9,17 +9,18 @@ const db = require("./db");
 async function sendTicketPanel(client) {
   try {
     const guild = client.guilds.cache.first();
-    const [rows] = await db.execute(
-      "SELECT channel_id, panel_message, button_names, ticket_messages FROM ticket_config WHERE guild_id = ? LIMIT 1",
+    const [configRows] = await db.execute(
+      "SELECT channel_id, panel_message, button_names, ticket_messages, embed_thumbnail FROM ticket_config WHERE guild_id = ? LIMIT 1",
       [guild.id]
     );
 
-    if (rows.length === 0) {
+    if (configRows.length === 0) {
       console.error("Aucune configuration de ticket trouvée.");
       return;
     }
 
-    const { channel_id, panel_message, button_names } = rows[0];
+    const { channel_id, panel_message, button_names, embed_thumbnail } =
+      configRows[0];
     const buttonNames = JSON.parse(button_names);
 
     const channel = await client.channels.fetch(channel_id);
@@ -32,12 +33,24 @@ async function sendTicketPanel(client) {
       "SELECT message_id FROM embed_messages WHERE name = 'ticket_panel' AND channel_id = ?",
       [channel_id]
     );
-
     if (existingMessages.length > 0) {
-      console.log(
-        "Un panneau de ticket existe déjà. Aucun nouveau panneau ne sera envoyé."
-      );
-      return;
+      const existingMessageID = existingMessages[0].message_id;
+      try {
+        const existingMessage = await channel.messages.fetch(existingMessageID);
+        if (existingMessage) {
+          console.log(
+            "Un panneau de ticket existe déjà. Aucun nouveau panneau ne sera envoyé."
+          );
+          return;
+        }
+      } catch (error) {
+        console.log(
+          "L'ancien panneau de ticket est introuvable sur Discord. Suppression de l'enregistrement en base."
+        );
+        await db.execute("DELETE FROM embed_messages WHERE message_id = ?", [
+          existingMessageID,
+        ]);
+      }
     }
 
     const row = new ActionRowBuilder();
@@ -54,7 +67,15 @@ async function sendTicketPanel(client) {
       .setTitle("📌 Support")
       .setDescription(panel_message)
       .setColor(0x00aaff)
-      .setThumbnail("attachment://image.png");
+      .setTimestamp();
+
+    if (embed_thumbnail && embed_thumbnail.trim().length > 0) {
+      embed.setThumbnail(embed_thumbnail);
+    } else {
+      console.log(
+        "Aucun thumbnail personnalisé trouvé, utilisation d'aucun thumbnail."
+      );
+    }
 
     const message = await channel.send({ embeds: [embed], components: [row] });
 

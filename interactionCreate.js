@@ -7,6 +7,8 @@ const {
 } = require("discord.js");
 
 const db = require("./db");
+
+// GESTION DU MODAL POUR LA CONNEXION ROBLOX
 if (
   typeof interaction !== "undefined" &&
   interaction.isModalSubmit() &&
@@ -22,7 +24,8 @@ if (
   };
 
   (async () => {
-    const robloxUsername = interaction.fields.getTextInputValue("roblox_username");
+    const robloxUsername =
+      interaction.fields.getTextInputValue("roblox_username");
     const discordId = interaction.user.id;
     const verificationCode = generateVerificationCode();
 
@@ -32,7 +35,11 @@ if (
         VALUES (?, ?, ?, 0)
         ON DUPLICATE KEY UPDATE roblox_username = VALUES(roblox_username), verification_code = VALUES(verification_code), verified = 0
       `;
-      await db.execute(queryInsert, [discordId, robloxUsername, verificationCode]);
+      await db.execute(queryInsert, [
+        discordId,
+        robloxUsername,
+        verificationCode,
+      ]);
 
       await interaction.reply({
         content: `Ton code de vérification est : **${verificationCode}**.
@@ -41,9 +48,13 @@ Ensuite, lance la commande \`/verifyroblox\` pour finaliser la vérification.`,
         ephemeral: true,
       });
     } catch (error) {
-      console.error("Erreur lors de l'enregistrement du compte Roblox :", error);
+      console.error(
+        "Erreur lors de l'enregistrement du compte Roblox :",
+        error
+      );
       await interaction.reply({
-        content: "Une erreur est survenue lors de l'association de ton compte Roblox.",
+        content:
+          "Une erreur est survenue lors de l'association de ton compte Roblox.",
         ephemeral: true,
       });
     }
@@ -60,41 +71,60 @@ module.exports = async (interaction) => {
 
   if (interaction.isButton()) {
     const guild = interaction.guild;
-  
-    if (interaction.customId.startsWith('ticket_')) {
-      const ticketIndex = interaction.customId.split('_')[1];
-      const [rows] = await db.execute("SELECT category_id, role_id, ticket_messages FROM ticket_config WHERE guild_id = ?", [guild.id]);
-    
+
+    if (interaction.customId.startsWith("ticket_")) {
+      const ticketIndex = interaction.customId.split("_")[1];
+
+      const [rows] = await db.execute(
+        "SELECT category_id, role_id, ticket_messages, embed_thumbnail FROM ticket_config WHERE guild_id = ?",
+        [guild.id]
+      );
+
       if (rows.length === 0) {
         return interaction.reply({
           content: "La configuration des tickets n'a pas été trouvée.",
           ephemeral: true,
         });
       }
-    
-      const { category_id, role_id, ticket_messages } = rows[0];
-      const ticketMessage = JSON.parse(ticket_messages)[ticketIndex];
-    
-      const sanitizedDisplayName = interaction.member.displayName.replace(/\s+/g, '-').toLowerCase();
-      const channelName = `ticket-${sanitizedDisplayName}`;
-    
-      const category = guild.channels.cache.get(category_id);
-      if (!category) return console.error("La catégorie n'existe pas.");
-    
-      const userTickets = guild.channels.cache.filter(channel =>
-        channel.parentId === category.id &&
-        channel.name.startsWith(`ticket-`) &&
-        channel.name.includes(sanitizedDisplayName)
+
+      const { category_id, role_id, ticket_messages, embed_thumbnail } =
+        rows[0];
+
+      const ticketMessage = JSON.parse(ticket_messages)[ticketIndex].replace(
+        /\//g,
+        "\n"
       );
-    
+
+      const sanitizedDisplayName = interaction.member.displayName
+        .replace(/\s+/g, "-")
+        .toLowerCase();
+      const channelName = `ticket-${sanitizedDisplayName}`;
+
+      const category = guild.channels.cache.get(category_id);
+      if (!category) {
+        console.error("La catégorie n'existe pas.");
+        return interaction.reply({
+          content: "La catégorie spécifiée n'existe pas sur ce serveur.",
+          ephemeral: true,
+        });
+      }
+
+      const userTickets = guild.channels.cache.filter(
+        (channel) =>
+          channel.parentId === category.id &&
+          channel.name.startsWith("ticket-") &&
+          channel.name.includes(sanitizedDisplayName)
+      );
+
       if (userTickets.size > 0) {
         await interaction.reply({
-          content: "Vous avez déjà un ticket ouvert. Vous ne pouvez pas en créer un autre.",
+          content:
+            "Vous avez déjà un ticket ouvert. Vous ne pouvez pas en créer un autre.",
           ephemeral: true,
         });
         return;
       }
-    
+
       try {
         const ticketChannel = await guild.channels.create({
           name: channelName,
@@ -116,25 +146,31 @@ module.exports = async (interaction) => {
         });
 
         await ticketChannel.send({ content: `<@${interaction.user.id}>` });
-    
+
         const ticketEmbed = new EmbedBuilder()
-          .setTitle("Ticket Ouvert")
           .setDescription(ticketMessage)
           .setColor(0x00aaff)
-          .setFooter({ text: `Ticket créé par ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+          .setFooter({
+            text: `Ticket créé par ${interaction.user.tag}`,
+            iconURL: interaction.user.displayAvatarURL(),
+          })
           .setTimestamp();
-    
+
+        if (embed_thumbnail) {
+          ticketEmbed.setThumbnail(embed_thumbnail);
+        }
+
         await ticketChannel.send({ embeds: [ticketEmbed] });
-    
+
         const closeButtonRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId("close_ticket")
             .setLabel("Fermer le ticket")
             .setStyle(ButtonStyle.Danger)
         );
-    
+
         await ticketChannel.send({ components: [closeButtonRow] });
-    
+
         await interaction.reply({
           content: `Votre ticket a été créé : ${ticketChannel}`,
           ephemeral: true,
@@ -147,10 +183,14 @@ module.exports = async (interaction) => {
         });
       }
     }
-    
+
+    // GESTION DE LA FERMETURE DU TICKET (affichage des options)
     if (interaction.customId === "close_ticket") {
       const ticketChannel = interaction.channel;
-      const [config] = await db.execute("SELECT role_id FROM ticket_config WHERE guild_id = ?", [guild.id]);
+      const [config] = await db.execute(
+        "SELECT role_id FROM ticket_config WHERE guild_id = ?",
+        [guild.id]
+      );
       const { role_id } = config[0];
 
       if (!interaction.member.roles.cache.has(role_id)) {
@@ -185,13 +225,18 @@ module.exports = async (interaction) => {
       });
     }
 
+    // GESTION DE LA FERMETURE FINALE DU TICKET AVEC TRANSCRIPT
     if (interaction.customId === "final_close_ticket") {
-      const [config] = await db.execute("SELECT role_id, transcript_channel_id FROM ticket_config WHERE guild_id = ?", [guild.id]);
+      const [config] = await db.execute(
+        "SELECT role_id, transcript_channel_id FROM ticket_config WHERE guild_id = ?",
+        [guild.id]
+      );
       const { role_id, transcript_channel_id } = config[0];
 
       if (!interaction.member.roles.cache.has(role_id)) {
         return interaction.reply({
-          content: "Vous n'êtes pas autorisé à fermer définitivement ce ticket.",
+          content:
+            "Vous n'êtes pas autorisé à fermer définitivement ce ticket.",
           ephemeral: true,
         });
       }
@@ -220,7 +265,9 @@ module.exports = async (interaction) => {
           name: `transcript-${interaction.channel.name}.txt`,
         });
 
-        const transcriptChannel = await guild.channels.fetch(transcript_channel_id);
+        const transcriptChannel = await guild.channels.fetch(
+          transcript_channel_id
+        );
         if (transcriptChannel) {
           await transcriptChannel.send({
             content: `Voici le transcript du ticket **${interaction.channel.name}** :`,
@@ -230,21 +277,33 @@ module.exports = async (interaction) => {
           console.error("Salon de transcript introuvable !");
         }
       } catch (err) {
-        console.error("Erreur lors de la création ou de l'envoi du transcript :", err);
+        console.error(
+          "Erreur lors de la création ou de l'envoi du transcript :",
+          err
+        );
       }
 
       setTimeout(() => {
-        interaction.channel.delete().catch((err) => console.error("Erreur lors de la suppression du canal :", err));
+        interaction.channel
+          .delete()
+          .catch((err) =>
+            console.error("Erreur lors de la suppression du canal :", err)
+          );
       }, 3000);
     }
 
+    // GESTION DE LA FERMETURE SANS TRANSCRIPT
     if (interaction.customId === "close_ticket_no_transcript") {
-      const [config] = await db.execute("SELECT role_id FROM ticket_config WHERE guild_id = ?", [guild.id]);
+      const [config] = await db.execute(
+        "SELECT role_id FROM ticket_config WHERE guild_id = ?",
+        [guild.id]
+      );
       const { role_id } = config[0];
 
       if (!interaction.member.roles.cache.has(role_id)) {
         return interaction.reply({
-          content: "Vous n'êtes pas autorisé à fermer définitivement ce ticket.",
+          content:
+            "Vous n'êtes pas autorisé à fermer définitivement ce ticket.",
           ephemeral: true,
         });
       }
@@ -255,12 +314,20 @@ module.exports = async (interaction) => {
       });
 
       setTimeout(() => {
-        interaction.channel.delete().catch((err) => console.error("Erreur lors de la suppression du canal :", err));
+        interaction.channel
+          .delete()
+          .catch((err) =>
+            console.error("Erreur lors de la suppression du canal :", err)
+          );
       }, 3000);
     }
 
+    // GESTION DE LA RÉOUVERTURE DU TICKET
     if (interaction.customId === "reopen_ticket") {
-      const [config] = await db.execute("SELECT role_id FROM ticket_config WHERE guild_id = ?", [guild.id]);
+      const [config] = await db.execute(
+        "SELECT role_id FROM ticket_config WHERE guild_id = ?",
+        [guild.id]
+      );
       const { role_id } = config[0];
 
       if (!interaction.member.roles.cache.has(role_id)) {
@@ -270,9 +337,12 @@ module.exports = async (interaction) => {
         });
       }
 
-      await interaction.channel.permissionOverwrites.edit(interaction.guild.id, {
-        ViewChannel: true,
-      });
+      await interaction.channel.permissionOverwrites.edit(
+        interaction.guild.id,
+        {
+          ViewChannel: true,
+        }
+      );
 
       await interaction.reply({
         content: "Ce ticket a été réouvert.",
@@ -281,4 +351,3 @@ module.exports = async (interaction) => {
     }
   }
 };
-
