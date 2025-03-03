@@ -9,6 +9,9 @@ const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
 
+const db = require("./db");
+global.database = db;
+
 const { sendTicketPanel } = require("./ticketPanel");
 
 const client = new Client({
@@ -17,10 +20,36 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
-  ],
+    GatewayIntentBits.GuildMessageReactions
+  ]
 });
 
+// Variables globales
 client.commands = new Collection();
+global.staffStatus = new Map();
+global.lastMessageId = null;
+global.reactionChannels = new Set();
+
+// Fonction d'initialisation de la base de données
+async function initDatabase() {
+  try {
+    // Création de la table si elle n'existe pas
+    await db.promise().execute(`
+      CREATE TABLE IF NOT EXISTS reaction_channels (
+        channel_id VARCHAR(255) PRIMARY KEY,
+        guild_id VARCHAR(255) NOT NULL
+      )
+    `);
+
+    // Chargement des salons configurés depuis la table
+    const [rows] = await db.promise().execute('SELECT channel_id FROM reaction_channels');
+    rows.forEach(ch => global.reactionChannels.add(ch.channel_id));
+  } catch (error) {
+    console.error("Erreur lors de l'initialisation de la DB:", error);
+  }
+}
+
+// Chargement des commandes
 const commandsPath = path.join(__dirname, "commands");
 const commandFiles = fs
   .readdirSync(commandsPath)
@@ -31,17 +60,11 @@ for (const file of commandFiles) {
   client.commands.set(command.data.name, command);
 }
 
-global.staffStatus = new Map();
-global.lastMessageId = null;
 const STAFF_ROLE_ID = "1304151263851708458";
 const CHANNEL_ID = "1337086501778882580";
 const staffUsernames = [];
 
-/**
- * Met à jour l'embed de présence dans le salon défini.
- * @param {Guild} guild Le serveur Discord
- * @param {string} channelId L'ID du salon où envoyer l'embed
- */
+// Fonction existante inchangée
 async function updatePresenceEmbed(guild, channelId) {
   try {
     const availableStaff = [];
@@ -85,20 +108,19 @@ async function updatePresenceEmbed(guild, channelId) {
 client.once("ready", async () => {
   console.log(`Bot connecté en tant que ${client.user.tag}`);
 
-  const guild = client.guilds.cache.first();
-  if (!guild) {
-    console.log("Le bot n'est dans aucun serveur.");
-    return;
-  }
-
   try {
-    await guild.commands.set(client.commands.map((command) => command.data));
-    console.log("Commandes enregistrées !");
+    await client.application.commands.set(client.commands.map((command) => command.data));
+    console.log("Commandes enregistrées globalement !");
   } catch (error) {
-    console.error("Erreur lors de l'enregistrement des commandes :", error);
+    console.error("Erreur lors de l'enregistrement des commandes globales :", error);
   }
 
   try {
+    const guild = client.guilds.cache.first();
+    if (!guild) {
+      console.log("Le bot n'est dans aucun serveur.");
+      return;
+    }
     const members = await guild.members.fetch();
     for (const username of staffUsernames) {
       const member = members.find((m) => m.user.username === username);
@@ -113,6 +135,33 @@ client.once("ready", async () => {
   await sendTicketPanel(client);
 });
 
+// Gestion des messages avec réactions
+client.on("messageCreate", async message => {
+  if (message.author.bot) return;
+  
+  if (global.reactionChannels.has(message.channel.id)) {
+    try {
+      await message.react('✅');
+      await message.react('❌');
+    } catch (error) {
+      console.error(`Erreur de réaction dans ${message.channel.id}:`, error);
+    }
+  }
+});
+
+// Nettoyage des salons supprimés
+client.on("channelDelete", async channel => {
+  if (global.reactionChannels.has(channel.id)) {
+    try {
+      await db.promise().execute('DELETE FROM reaction_channels WHERE channel_id = ?', [channel.id]);
+      global.reactionChannels.delete(channel.id);
+    } catch (error) {
+      console.error("Erreur lors de la suppression du salon dans la DB:", error);
+    }
+  }
+});
+
+// Gestion des interactions existante
 client.on("interactionCreate", async (interaction) => {
   if (interaction.isCommand()) {
     const command = client.commands.get(interaction.commandName);
@@ -137,4 +186,8 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-client.login(process.env.TOKEN);
+// Initialisation de la base de données puis connexion du client
+(async () => {
+  await initDatabase();
+  client.login(process.env.TOKEN);
+})();
