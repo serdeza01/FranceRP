@@ -11,9 +11,14 @@ module.exports = {
         .setDescription("L'utilisateur dont on supprime le permis")
         .setRequired(true)
     ),
-
   async execute(interaction) {
-    if (!interaction.member.roles.cache.has("1326923044500934656")) {
+    const [permisRoles] = await db.execute(
+      "SELECT role_id FROM role_permissions WHERE guild_id = ? AND permission_type = 'permis'",
+      [interaction.guild.id]
+    );
+    const member = interaction.member;
+    const hasPermission = permisRoles.some((role) => member.roles.cache.has(role.role_id));
+    if (!hasPermission) {
       return interaction.reply({
         content: "Vous n'avez pas la permission de supprimer le permis.",
         ephemeral: true,
@@ -23,9 +28,9 @@ module.exports = {
     const user = interaction.options.getUser("utilisateur");
 
     try {
-      const [result] = await db.promise().execute(
-        "DELETE FROM permis WHERE discord_id = ?",
-        [user.id]
+      const [result] = await db.execute(
+        "DELETE FROM permis WHERE guild_id = ? AND discord_id = ?",
+        [interaction.guild.id, user.id]
       );
 
       if (result.affectedRows === 0) {
@@ -37,7 +42,7 @@ module.exports = {
 
       return interaction.reply({
         content: `Le permis de ${user.username} a été supprimé avec succès.`,
-        ephemeral: false,
+        ephemeral: true,
       });
     } catch (err) {
       console.error("Erreur MySQL:", err);

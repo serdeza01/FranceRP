@@ -1,28 +1,26 @@
-const {
-  SlashCommandBuilder,
-  EmbedBuilder,
-  AttachmentBuilder,
-} = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require("discord.js");
 const db = require("../db");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("assurance")
     .setDescription("Affiche ta carte d'assurance"),
-
   async execute(interaction) {
     await interaction.deferReply({ ephemeral: false });
 
     const discordId = interaction.user.id;
+    const guildId = interaction.guild.id;
 
     try {
-      const [results] = await db
-        .promise()
-        .execute("SELECT * FROM assurance WHERE discord_id = ?", [discordId]);
+      const [results] = await db.execute(
+        "SELECT * FROM assurance WHERE guild_id = ? AND discord_id = ?",
+        [guildId, discordId]
+      );
 
       if (results.length === 0) {
         return interaction.editReply({
-          content: "Tu n'as pas d'assurance enregistrée.",
+          content: "Tu n'as pas d'assurance enregistrée sur ce serveur.",
+          ephemeral: true
         });
       }
 
