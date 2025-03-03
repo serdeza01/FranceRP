@@ -20,6 +20,7 @@ module.exports = {
       if (results.length === 0) {
         return interaction.editReply({
           content: "Tu n’as pas de permis enregistré sur ce serveur.",
+          ephemeral: true
         });
       }
 

@@ -42,7 +42,7 @@ module.exports = {
 
       return interaction.reply({
         content: `La carte d'assurance de ${user.username} a été supprimée avec succès.`,
-        ephemeral: false,
+        ephemeral: true,
       });
     } catch (err) {
       console.error("Erreur MySQL:", err);

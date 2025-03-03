@@ -42,7 +42,7 @@ module.exports = {
 
       return interaction.reply({
         content: `Le permis de ${user.username} a été supprimé avec succès.`,
-        ephemeral: false,
+        ephemeral: true,
       });
     } catch (err) {
       console.error("Erreur MySQL:", err);
