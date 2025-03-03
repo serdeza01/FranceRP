@@ -23,7 +23,7 @@ module.exports = {
                 content: "Vous n'avez pas la permission d'utiliser cette commande.",
                 ephemeral: true,
             });
-        }        
+        }
 
         const role = interaction.options.getRole("rôle");
 
