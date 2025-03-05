@@ -8,7 +8,6 @@ const {
 
 const db = require("./db");
 
-// GESTION DU MODAL POUR LA CONNEXION ROBLOX
 if (
   typeof interaction !== "undefined" &&
   interaction.isModalSubmit() &&
@@ -126,6 +125,7 @@ module.exports = async (interaction) => {
       }
 
       try {
+        const user = interaction.user.id;
         const ticketChannel = await guild.channels.create({
           name: channelName,
           parent: category_id,
@@ -193,17 +193,25 @@ module.exports = async (interaction) => {
       );
       const { role_id } = config[0];
 
-      if (!interaction.member.roles.cache.has(role_id)) {
-        return interaction.reply({
-          content: "Vous n'êtes pas autorisé à fermer ce ticket.",
-          ephemeral: true,
-        });
-      }
+      ticketChannel.permissionOverwrites.cache.forEach(async (overwrite) => {
+        if (overwrite.type === "member" && overwrite.id !== role_id) {
+          try {
+            await ticketChannel.permissionOverwrites.edit(overwrite.id, {
+              ViewChannel: false,
+            });
+          } catch (err) {
+            console.error(
+              `Erreur lors de la modification des permissions pour ${overwrite.id}:`,
+              err
+            );
+          }
+        }
+      });
 
       const closeEmbed = new EmbedBuilder()
         .setDescription("Le ticket va être fermé. Choisissez une option :")
         .setColor(0xff0000);
-
+    
       const closeOptionsRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("final_close_ticket")
@@ -218,7 +226,7 @@ module.exports = async (interaction) => {
           .setLabel("Réouvrir le ticket")
           .setStyle(ButtonStyle.Success)
       );
-
+    
       await ticketChannel.send({
         embeds: [closeEmbed],
         components: [closeOptionsRow],
