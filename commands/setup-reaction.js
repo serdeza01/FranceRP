@@ -15,26 +15,23 @@ module.exports = {
     const guildId = interaction.guild.id;
 
     try {
-      // Vérifier si le salon est déjà configuré
-      const [rows] = await db.promise().execute(
+      const [rows] = await db.execute(
         "SELECT * FROM reaction_channels WHERE channel_id = ?",
         [channelId]
       );
 
       if (rows.length > 0) {
-        // Si déjà configuré, on supprime la configuration
-        await db.promise().execute(
+        await db.execute(
           "DELETE FROM reaction_channels WHERE channel_id = ?",
           [channelId]
         );
         global.reactionChannels.delete(channelId);
         await interaction.reply({
           content: "❌ Réactions désactivées!",
-          flags: 64 // 64 correspond à l'option éphémère (EPHEMERAL)
+          flags: 64
         });
       } else {
-        // Sinon, on insère la configuration
-        await db.promise().execute(
+        await db.execute(
           "INSERT INTO reaction_channels (channel_id, guild_id) VALUES (?, ?)",
           [channelId, guildId]
         );

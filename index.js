@@ -234,6 +234,13 @@ client.once("ready", async () => {
   await sendTicketPanel(client);
 });
 
+client.on('messageCreate', async (message) => {
+  if (global.reactionChannels.has(message.channel.id)) {
+    await message.react("✅");
+    await message.react("❌");
+  }
+});
+
 client.on("interactionCreate", async (interaction) => {
   if (interaction.isCommand()) {
     const command = client.commands.get(interaction.commandName);
@@ -256,7 +263,7 @@ client.on("interactionCreate", async (interaction) => {
       console.error(error);
       await interaction.reply({
         content: "Une erreur est survenue.",
-        flags: 1 << 6, // Équivalent d'EPHEMERAL
+        flags: 1 << 6,
       });
     }
   } else if (interaction.isModalSubmit()) {
