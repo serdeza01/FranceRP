@@ -4,6 +4,7 @@ const {
   Collection,
   AttachmentBuilder,
   EmbedBuilder,
+  ActivityType,
 } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
@@ -165,8 +166,8 @@ client.once("ready", async () => {
     try {
       client.user.setPresence({
         activities: [{
-          name: `regarde ${totalMembers} membres`,
-          type: "WATCHING"
+          name: `${totalMembers} members`,
+          type: ActivityType.Watching
         }],
         status: "online"
       });
