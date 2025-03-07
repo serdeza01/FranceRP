@@ -24,7 +24,7 @@ module.exports = {
       );
       
       if (results.length === 0) {
-        return interaction.editReply({ content: `<@${user.id}> n'a pas encore de niveau enregistré sur ce serveur.` });
+        return interaction.editReply({ content: `<@${user.id}> n'a pas encore de niveau enregistré sur ce serveur.`, ephemeral: true});
       }
       
       const { xp, level } = results[0];
