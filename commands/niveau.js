@@ -31,8 +31,9 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setTitle(`Niveau de ${user.username}`)
         .setDescription(`Niveau : **${level}**\nXP : **${xp}**`)
-        .setColor("#00FFFF");
-        
+        .setColor("#00FFFF")
+        .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 1024 }));
+
       return interaction.editReply({ embeds: [embed] });
     } catch (err) {
       console.error("Erreur lors de la récupération du niveau :", err);
