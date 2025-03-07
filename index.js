@@ -158,7 +158,27 @@ async function updateTicketEmbed(guild, channelId) {
 }
 
 client.once("ready", async () => {
+  function updateBotStatus() {
+    const totalMembers = client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
+    console.log(`Mise à jour du statut : ${totalMembers} membres.`);
+    
+    try {
+      client.user.setPresence({
+        activities: [{
+          name: `regarde ${totalMembers} membres`,
+          type: "WATCHING"
+        }],
+        status: "online"
+      });
+      console.log("Présence mise à jour");
+    } catch (err) {
+      console.error("Erreur lors de la mise à jour du statut :", err);
+    }
+  }
   console.log(`Bot connecté en tant que ${client.user.tag}`);
+  
+  updateBotStatus();
+  setInterval(updateBotStatus, 60000);
 
   try {
     await client.application.commands.set(
@@ -166,30 +186,19 @@ client.once("ready", async () => {
     );
     console.log("Commandes enregistrées globalement !");
   } catch (error) {
-    console.error(
-      "Erreur lors de l'enregistrement des commandes globales :",
-      error
-    );
+    console.error("Erreur lors de l'enregistrement des commandes globales :", error);
   }
 
   try {
-    const [rows] = await db
-      .execute(
-        `
-        SELECT message_id 
-        FROM presence_embed 
-        WHERE channel_id = ?
-      `,
-        [CHANNEL_ID]
-      );
+    const [rows] = await db.execute(
+      `SELECT message_id FROM presence_embed WHERE channel_id = ?`,
+      [CHANNEL_ID]
+    );
     if (rows && rows.length > 0 && rows[0].message_id) {
       global.lastMessageId = rows[0].message_id;
     }
   } catch (error) {
-    console.error(
-      "Erreur lors de la récupération de l'embed de présence en BDD :",
-      error
-    );
+    console.error("Erreur lors de la récupération de l'embed de présence en BDD :", error);
   }
 
   try {
@@ -214,9 +223,7 @@ client.once("ready", async () => {
       try {
         presenceMessage = await channel.messages.fetch(global.lastMessageId);
       } catch (err) {
-        console.error(
-          "L'embed stocké en BDD est introuvable. Création d'un nouvel embed..."
-        );
+        console.error("L'embed stocké en BDD est introuvable. Création d'un nouvel embed...");
         presenceMessage = await updatePresenceEmbedMessage(guild, CHANNEL_ID);
       }
     }
@@ -225,10 +232,7 @@ client.once("ready", async () => {
       await presenceMessage.edit({ embeds: [newEmbed] });
     }
   } catch (error) {
-    console.error(
-      "Erreur lors de la récupération des membres ou mise à jour de l'embed :",
-      error
-    );
+    console.error("Erreur lors de la récupération des membres ou mise à jour de l'embed :", error);
   }
 
   await sendTicketPanel(client);
