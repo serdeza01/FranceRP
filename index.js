@@ -239,6 +239,79 @@ client.on('messageCreate', async (message) => {
     await message.react("✅");
     await message.react("❌");
   }
+
+  if (message.author.bot || !message.guild) return;
+  const guildId = message.guild.id;
+  const discordId = message.author.id;
+
+  if (!global.lastMessageTimestamps) global.lastMessageTimestamps = {};
+  const key = `${guildId}-${discordId}`;
+  const now = Date.now();
+  if (global.lastMessageTimestamps[key] && now - global.lastMessageTimestamps[key] < 10000) {
+    return;
+  }
+  global.lastMessageTimestamps[key] = now;
+
+  const xpEarned = Math.max(1, Math.floor(message.content.length / 10));
+
+  try {
+    await db.execute(
+      `INSERT INTO user_levels (guild_id, discord_id, xp, level)
+       VALUES (?, ?, ?, 1)
+       ON DUPLICATE KEY UPDATE xp = xp + ?`,
+      [guildId, discordId, xpEarned, xpEarned]
+    );
+
+    const [rows] = await db.execute(
+      "SELECT xp, level FROM user_levels WHERE guild_id = ? AND discord_id = ?",
+      [guildId, discordId]
+    );
+    if (rows.length > 0) {
+      let { xp, level } = rows[0];
+      const xpThreshold = level * 100;
+
+      if (xp >= xpThreshold) {
+        level++;
+        await db.execute(
+          "UPDATE user_levels SET level = ? WHERE guild_id = ? AND discord_id = ?",
+          [level, guildId, discordId]
+        );
+
+        const [configRows] = await db.execute(
+          "SELECT system_enabled, announce_enabled, announce_channel FROM level_config WHERE guild_id = ?",
+          [guildId]
+        );
+        let announce = false;
+        let announceChannelId = null;
+        if (configRows.length > 0 && configRows[0].system_enabled) {
+          announce = configRows[0].announce_enabled;
+          announceChannelId = configRows[0].announce_channel;
+        }
+
+        if (announce) {
+          const { EmbedBuilder } = require("discord.js");
+          const user = message.author;
+          const embed = new EmbedBuilder()
+            .setTitle("Nouveau Niveau Atteint !")
+            .setDescription(`<@${user.id}> vient d'atteindre le niveau **${level}** !`)
+            .setThumbnail(user.displayAvatarURL({ dynamic: true }))
+            // .setImage("https://lien-de-votre-image-de-fond.com/image.png")
+            .setColor("#00FF00")
+            .setTimestamp();
+
+          let channel;
+          if (announceChannelId) {
+            channel = message.guild.channels.cache.get(announceChannelId);
+          }
+          if (!channel) channel = message.channel;
+          channel.send({ embeds: [embed] });
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Erreur dans le système d'XP :", err);
+  }
+
 });
 
 client.on("interactionCreate", async (interaction) => {
