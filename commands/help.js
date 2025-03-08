@@ -55,7 +55,7 @@ module.exports = {
 **/rename** - Permet de renommer un ticket
       `)
       .setColor("#00ff00")
-      .setFooter("Made by serdeza");
+      .setFooter({ text: "Made by serdeza" })
     return interaction.reply({ embeds: [embed] });
   },
 };

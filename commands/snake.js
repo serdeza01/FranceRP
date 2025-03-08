@@ -53,7 +53,11 @@ module.exports = {
 
     const message = await interaction.editReply({ embeds: [embed], components: [buttons] });
 
-    const collector = message.createMessageComponentCollector({ componentType: ComponentType.Button, time: 300000 });
+    const collector = message.createMessageComponentCollector({ 
+      filter: i => i.user.id === interaction.user.id,
+      componentType: ComponentType.Button, 
+      time: 1800000 // 30 minutes
+    });
 
     collector.on("collect", async i => {
       const newDir = { x: 0, y: 0 };
@@ -93,14 +97,8 @@ module.exports = {
       await i.update({ embeds: [newEmbed] });
     });
 
-    collector.on("end", (collected, reason) => {
-      const disabledRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("up").setLabel("⬆️").setStyle(ButtonStyle.Primary).setDisabled(true),
-        new ButtonBuilder().setCustomId("down").setLabel("⬇️").setStyle(ButtonStyle.Primary).setDisabled(true),
-        new ButtonBuilder().setCustomId("left").setLabel("⬅️").setStyle(ButtonStyle.Primary).setDisabled(true),
-        new ButtonBuilder().setCustomId("right").setLabel("➡️").setStyle(ButtonStyle.Primary).setDisabled(true)
-      );
-      interaction.editReply({ components: [disabledRow] });
+    collector.on("end", () => {
+      interaction.editReply({ components: [] });
     });
   },
 };

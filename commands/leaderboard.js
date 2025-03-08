@@ -13,7 +13,7 @@ module.exports = {
       [guildId]
     );
     if (results.length === 0) {
-      return interaction.editReply("Aucun niveau enregistré pour ce serveur.");
+      return interaction.editReply("Aucun niveau enregistré pour ce serveur", ephemeral = true);
     }
     let currentPage = 0;
     const itemsPerPage = 10;

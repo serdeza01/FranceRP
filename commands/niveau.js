@@ -24,13 +24,23 @@ module.exports = {
       );
       
       if (results.length === 0) {
-        return interaction.editReply({ content: `<@${user.id}> n'a pas encore de niveau enregistré sur ce serveur.` });
+        return interaction.editReply({
+          content: `<@${user.id}> n'a pas encore de niveau enregistré sur ce serveur.`,
+          ephemeral: true
+        });
       }
       
       const { xp, level } = results[0];
+
+      const [rankResult] = await db.execute(
+        "SELECT COUNT(*) AS rank FROM user_levels WHERE guild_id = ? AND (level > ? OR (level = ? AND xp > ?))",
+        [guildId, level, level, xp]
+      );
+      const rank = rankResult[0].rank + 1;
+
       const embed = new EmbedBuilder()
         .setTitle(`Niveau de ${user.username}`)
-        .setDescription(`Niveau : **${level}**\nXP : **${xp}**`)
+        .setDescription(`Niveau : **${level}**\nXP : **${xp}**\nRang : **${rank}**`)
         .setColor("#00FFFF")
         .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 1024 }));
 

@@ -39,6 +39,7 @@ module.exports = {
 
     let score = 0;
     let factor = 10;
+    let wrongCount = 0;
 
     const generateAndAsk = async () => {
       const { problem, answer } = generateProblem(factor);
@@ -56,17 +57,25 @@ module.exports = {
 
     collector.on("collect", async m => {
       const userAnswer = parseFloat(m.content);
+      
+      if (isNaN(userAnswer)) return;
+
       if (userAnswer === currentProblem.answer) {
         score++;
         factor = Math.min(100, factor + 2);
         await interaction.followUp(`Correct ! Score: **${score}**`);
         currentProblem = await generateAndAsk();
       } else {
-        collector.stop("wrong");
-        const embed = new EmbedBuilder()
-          .setTitle("Calcul Mental")
-          .setDescription(`Mauvaise réponse ! Le jeu s'arrête. Score final : **${score}**`);
-        interaction.followUp({ embeds: [embed] });
+        wrongCount++;
+        if (wrongCount >= 3) {
+          collector.stop("lost");
+          const embed = new EmbedBuilder()
+            .setTitle("Calcul Mental")
+            .setDescription(`Mauvaise réponse, tu as fait **${wrongCount}** erreurs. Le jeu s'arrête ici. Score final : **${score}**`);
+          await interaction.followUp({ embeds: [embed] });
+        } else {
+          await interaction.followUp(`Mauvaise réponse ! Tu as encore **${3 - wrongCount}** chance(s). Réessaie !`);
+        }
       }
     });
 

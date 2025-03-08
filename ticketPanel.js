@@ -33,25 +33,6 @@ async function sendTicketPanel(client) {
       "SELECT message_id FROM embed_messages WHERE name = 'ticket_panel' AND channel_id = ?",
       [channel_id]
     );
-    if (existingMessages.length > 0) {
-      const existingMessageID = existingMessages[0].message_id;
-      try {
-        const existingMessage = await channel.messages.fetch(existingMessageID);
-        if (existingMessage) {
-          console.log(
-            "Un panneau de ticket existe déjà. Aucun nouveau panneau ne sera envoyé."
-          );
-          return;
-        }
-      } catch (error) {
-        console.log(
-          "L'ancien panneau de ticket est introuvable sur Discord. Suppression de l'enregistrement en base."
-        );
-        await db.execute("DELETE FROM embed_messages WHERE message_id = ?", [
-          existingMessageID,
-        ]);
-      }
-    }
 
     const row = new ActionRowBuilder();
     buttonNames.forEach((name, index) => {
@@ -75,6 +56,43 @@ async function sendTicketPanel(client) {
       console.log(
         "Aucun thumbnail personnalisé trouvé, utilisation d'aucun thumbnail."
       );
+    }
+
+    if (existingMessages.length > 0) {
+      const existingMessageID = existingMessages[0].message_id;
+      try {
+        const existingMessage = await channel.messages.fetch(existingMessageID);
+        if (existingMessage) {
+          let needsUpdate = false;
+          const oldEmbed = existingMessage.embeds[0];
+
+          if (!oldEmbed || !oldEmbed.thumbnail || !oldEmbed.thumbnail.url) {
+            needsUpdate = true;
+          }
+          if (needsUpdate) {
+            const newEmbed = EmbedBuilder.from(embed);
+            await existingMessage.edit({
+              embeds: [newEmbed],
+              components: [row],
+            });
+            console.log(
+              "Panneau de ticket existant mis à jour avec le thumbnail."
+            );
+          } else {
+            console.log(
+              "Un panneau de ticket existe déjà et il est à jour. Aucun nouveau panneau ne sera envoyé."
+            );
+          }
+          return;
+        }
+      } catch (error) {
+        console.log(
+          "L'ancien panneau de ticket est introuvable sur Discord. Suppression de l'enregistrement en base."
+        );
+        await db.execute("DELETE FROM embed_messages WHERE message_id = ?", [
+          existingMessageID,
+        ]);
+      }
     }
 
     const message = await channel.send({ embeds: [embed], components: [row] });
