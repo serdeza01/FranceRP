@@ -14,12 +14,17 @@ module.exports = {
 
     collector.on("collect", m => {
       const guess = parseInt(m.content, 10);
+      
       if (guess === target) {
         collector.stop("win");
         const embed = new EmbedBuilder()
           .setTitle("Gagné !")
           .setDescription(`<@${m.author.id}> a deviné le bon nombre : **${target}**`);
         interaction.followUp({ embeds: [embed] });
+      } else if (guess < target) {
+        interaction.followUp(`<@${m.author.id}>, c'est plus !`);
+      } else if (guess > target) {
+        interaction.followUp(`<@${m.author.id}>, c'est moins !`);
       }
     });
 
