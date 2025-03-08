@@ -144,37 +144,45 @@ module.exports = async (interaction) => {
             },
           ],
         });
-
         await ticketChannel.send({ content: `<@${interaction.user.id}>` });
-
+      
         const ticketEmbed = new EmbedBuilder()
           .setDescription(ticketMessage)
           .setColor(0x00aaff)
           .setFooter({
             text: `Ticket créé par ${interaction.user.tag}`,
-            iconURL: interaction.user.displayAvatarURL(),
+            iconURL: interaction.user.displayAvatarURL({ dynamic: true }),
           })
           .setTimestamp();
-
-        if (embed_thumbnail) {
+      
+        if (
+          embed_thumbnail &&
+          typeof embed_thumbnail === "string" &&
+          embed_thumbnail.trim().length > 0 &&
+          (embed_thumbnail.startsWith("http://") ||
+            embed_thumbnail.startsWith("https://"))
+        ) {
           ticketEmbed.setThumbnail(embed_thumbnail);
+        } else {
+          console.log("Aucun thumbnail valide trouvé, l'embed sera envoyé sans thumbnail.");
         }
-
+      
         await ticketChannel.send({ embeds: [ticketEmbed] });
-
+      
         const closeButtonRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId("close_ticket")
             .setLabel("Fermer le ticket")
             .setStyle(ButtonStyle.Danger)
         );
-
+      
         await ticketChannel.send({ components: [closeButtonRow] });
-
+      
         await interaction.reply({
           content: `Votre ticket a été créé : ${ticketChannel}`,
           ephemeral: true,
         });
+        await ticketChannel.setTopic(interaction.user.id);
       } catch (err) {
         console.error("Erreur lors de la création du ticket :", err);
         await interaction.reply({
@@ -187,25 +195,13 @@ module.exports = async (interaction) => {
     // GESTION DE LA FERMETURE DU TICKET (affichage des options)
     if (interaction.customId === "close_ticket") {
       const ticketChannel = interaction.channel;
-      const [config] = await db.execute(
-        "SELECT role_id FROM ticket_config WHERE guild_id = ?",
-        [guild.id]
-      );
-      const { role_id } = config[0];
-
-      ticketChannel.permissionOverwrites.cache.forEach(async (overwrite) => {
-        if (overwrite.type === "member" && overwrite.id !== role_id) {
-          try {
-            await ticketChannel.permissionOverwrites.edit(overwrite.id, {
-              ViewChannel: false,
-            });
-          } catch (err) {
-            console.error(
-              `Erreur lors de la modification des permissions pour ${overwrite.id}:`,
-              err
-            );
-          }
-        }
+    
+      await ticketChannel.permissionOverwrites.edit(interaction.user.id, {
+        ViewChannel: false,
+        SendMessages: false,
+        ReadMessageHistory: false,
+      }).catch(err => {
+        console.error("Erreur lors de la révocation de l'accès pour le créateur :", err);
       });
 
       const closeEmbed = new EmbedBuilder()
@@ -231,7 +227,7 @@ module.exports = async (interaction) => {
         embeds: [closeEmbed],
         components: [closeOptionsRow],
       });
-    }
+    }    
 
     // GESTION DE LA FERMETURE FINALE DU TICKET AVEC TRANSCRIPT
     if (interaction.customId === "final_close_ticket") {
@@ -332,30 +328,27 @@ module.exports = async (interaction) => {
 
     // GESTION DE LA RÉOUVERTURE DU TICKET
     if (interaction.customId === "reopen_ticket") {
-      const [config] = await db.execute(
-        "SELECT role_id FROM ticket_config WHERE guild_id = ?",
-        [guild.id]
-      );
-      const { role_id } = config[0];
-
-      if (!interaction.member.roles.cache.has(role_id)) {
+      const ticketChannel = interaction.channel;
+      const creatorId = ticketChannel.topic;
+      if (!creatorId) {
         return interaction.reply({
-          content: "Vous n'êtes pas autorisé à réouvrir ce ticket.",
+          content: "Impossible de retrouver le créateur du ticket.",
           ephemeral: true,
         });
       }
-
-      await interaction.channel.permissionOverwrites.edit(
-        interaction.guild.id,
-        {
-          ViewChannel: true,
-        }
-      );
-
+    
+      await ticketChannel.permissionOverwrites.edit(creatorId, {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+      }).catch(err => {
+        console.error("Erreur lors de la réouverture du ticket pour le créateur :", err);
+      });
+    
       await interaction.reply({
         content: "Ce ticket a été réouvert.",
         ephemeral: true,
       });
-    }
+    }    
   }
 };
