@@ -7,7 +7,7 @@ const db = require("../db");
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("mod")
-        .setDescription("Commandes de modération : ban, unban, kick, timeout, blacklist")
+        .setDescription("Commandes de modération : ban, unban, kick, timeout, blacklist, clear, warn")
         .addSubcommand((subcommand) =>
             subcommand
                 .setName("ban")
@@ -77,6 +77,28 @@ module.exports = {
                 .addStringOption((option) =>
                     option.setName("duration").setDescription("Durée (optionnel)")
                 )
+        )
+        .addSubcommand((subcommand) =>
+            subcommand
+                .setName("clear")
+                .setDescription("Efface un certain nombre de messages dans le salon")
+                .addIntegerOption((option) =>
+                    option
+                        .setName("amount")
+                        .setDescription("Nombre de messages à supprimer")
+                        .setRequired(true)
+                )
+        )
+        .addSubcommand((subcommand) =>
+            subcommand
+                .setName("warn")
+                .setDescription("Donne un avertissement à un utilisateur et l'enregistre en BDD")
+                .addUserOption((option) =>
+                    option.setName("target").setDescription("Utilisateur à avertir").setRequired(true)
+                )
+                .addStringOption((option) =>
+                    option.setName("reason").setDescription("Raison de l'avertissement").setRequired(true)
+                )
         ),
 
     async execute(interaction) {
@@ -137,8 +159,7 @@ module.exports = {
                     ephemeral: true,
                 });
             }
-        }
-
+        } 
         else if (subcommand === "unban") {
             const targetId = interaction.options.getString("targetid");
             const reason = interaction.options.getString("reason") || "Aucune raison fournie";
@@ -160,8 +181,7 @@ module.exports = {
                     ephemeral: true,
                 });
             }
-        }
-
+        } 
         else if (subcommand === "kick") {
             const target = interaction.options.getUser("target");
             const reason = interaction.options.getString("reason") || "Aucune raison fournie";
@@ -194,8 +214,7 @@ module.exports = {
                     ephemeral: true,
                 });
             }
-        }
-
+        } 
         else if (subcommand === "timeout") {
             const target = interaction.options.getUser("target");
             const durationMinutes = interaction.options.getInteger("duration");
@@ -229,8 +248,7 @@ module.exports = {
                     ephemeral: true,
                 });
             }
-        }
-
+        } 
         else if (subcommand === "blacklist") {
             const target = interaction.options.getUser("target");
             const reason = interaction.options.getString("reason");
@@ -286,6 +304,43 @@ module.exports = {
                 console.error("Erreur lors de la blacklist :", err);
                 await interaction.reply({
                     content: "Erreur lors de la procédure de blacklist de l'utilisateur.",
+                    ephemeral: true,
+                });
+            }
+        } 
+        else if (subcommand === "clear") {
+            const amount = interaction.options.getInteger("amount");
+            try {
+                await interaction.channel.bulkDelete(amount, true);
+                await interaction.reply({
+                    content: `**${amount}** message(s) ont été supprimé(s).`,
+                    ephemeral: true,
+                });
+            } catch (err) {
+                console.error("Erreur lors de la suppression des messages :", err);
+                await interaction.reply({
+                    content: "Erreur lors de la suppression des messages.",
+                    ephemeral: true,
+                });
+            }
+        } 
+        else if (subcommand === "warn") {
+            const target = interaction.options.getUser("target");
+            const reason = interaction.options.getString("reason");
+
+            try {
+                await db.execute(
+                    "INSERT INTO Warns (guild_id, executor_id, target_id, reason, timestamp) VALUES (?, ?, ?, ?, ?)",
+                    [guildId, executorId, target.id, reason, timestamp]
+                );
+                await interaction.reply({
+                    content: `${target.tag} a reçu un avertissement pour : ${reason}`,
+                    ephemeral: true,
+                });
+            } catch (err) {
+                console.error("Erreur lors de l'enregistrement de l'avertissement :", err);
+                await interaction.reply({
+                    content: "Erreur lors de l'avertissement de l'utilisateur.",
                     ephemeral: true,
                 });
             }
