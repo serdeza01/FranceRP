@@ -22,6 +22,13 @@ module.exports = {
     ),
   async execute(interaction) {
     await interaction.deferReply({ ephemeral: true });
+
+    if (!interaction.member.permissions.has("Administrator")) {
+      return interaction.editReply({
+        content: "Vous devez être administrateur pour utiliser cette commande.", ephemeral: true
+      });
+    }
+
     const guildId = interaction.guild.id;
     const activer = interaction.options.getBoolean("activer");
     const salon = interaction.options.getChannel("salon");
