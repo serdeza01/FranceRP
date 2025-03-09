@@ -183,7 +183,8 @@ client.once("ready", async () => {
 
   try {
     await client.application.commands.set(
-      client.commands.map((command) => command.data)
+      client.commands.map((command) => command.data),
+      "871053612971864064"
     );
     console.log("Commandes enregistrées globalement !");
   } catch (error) {
@@ -250,13 +251,6 @@ client.on("messageCreate", async (message) => {
   const discordId = message.author.id;
   const now = Date.now();
 
-  if (!global.lastMessageTimestamps) global.lastMessageTimestamps = {};
-  const xpKey = `${guildId}-${discordId}`;
-  if (global.lastMessageTimestamps[xpKey] && now - global.lastMessageTimestamps[xpKey] < 10000) {
-    return;
-  }
-  global.lastMessageTimestamps[xpKey] = now;
-
   try {
     const [configRows] = await db.execute(
       "SELECT enabled FROM antispam_config WHERE guild_id = ?",
@@ -264,13 +258,16 @@ client.on("messageCreate", async (message) => {
     );
     if (configRows.length && configRows[0].enabled) {
       if (!global.spamMap) global.spamMap = new Map();
-      let timestamps = global.spamMap.get(discordId) || [];
+      const spamKey = `${guildId}-${discordId}`;
+      let timestamps = global.spamMap.get(spamKey) || [];
       timestamps.push(now);
       const spamTimeFrame = 7000; // 7 secondes
       timestamps = timestamps.filter((ts) => now - ts < spamTimeFrame);
-      global.spamMap.set(discordId, timestamps);
+      global.spamMap.set(spamKey, timestamps);
 
-      const spamThreshold = 10; // plus de 10 messages en 7 secondes = spam
+      console.log(`[AntiSpam] ${spamKey} a ${timestamps.length} messages dans ${spamTimeFrame}ms.`);
+
+      const spamThreshold = 5;
       if (timestamps.length >= spamThreshold) {
         try {
           const fetched = await message.channel.messages.fetch({ limit: 100 });
@@ -359,15 +356,21 @@ client.on("messageCreate", async (message) => {
         } catch (err) {
           console.error("Erreur lors du traitement de l'antispam :", err);
         }
-        global.spamMap.set(discordId, []);
+        global.spamMap.set(spamKey, []);
       }
     }
   } catch (err) {
     console.error("Erreur lors de la lecture de la configuration anti-spam :", err);
   }
 
-  const xpEarned = Math.max(1, Math.floor(message.content.length / 10));
+  if (!global.lastMessageTimestamps) global.lastMessageTimestamps = {};
+  const xpKey = `${guildId}-${discordId}`;
+  if (global.lastMessageTimestamps[xpKey] && now - global.lastMessageTimestamps[xpKey] < 10000) {
+    return;
+  }
+  global.lastMessageTimestamps[xpKey] = now;
 
+  const xpEarned = Math.max(1, Math.floor(message.content.length / 10));
   try {
     await db.execute(
       `INSERT INTO user_levels (guild_id, discord_id, xp, level)
@@ -404,19 +407,14 @@ client.on("messageCreate", async (message) => {
 
         if (announce) {
           const { EmbedBuilder } = require("discord.js");
-          const user = message.author;
           const embed = new EmbedBuilder()
-            .setTitle("Nouveau Niveau Atteint !")
-            .setDescription(`<@${user.id}> vient d'atteindre le niveau **${level}** !`)
-            .setThumbnail(user.displayAvatarURL({ dynamic: true }))
+            .setTitle("Nouveau Niveau Atteint !")
+            .setDescription(`<@${discordId}> vient d'atteindre le niveau **${level}** !`)
+            .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
             .setColor("#00FF00")
             .setTimestamp();
 
-          let channel;
-          if (announceChannelId) {
-            channel = message.guild.channels.cache.get(announceChannelId);
-          }
-          if (!channel) channel = message.channel;
+          let channel = message.guild.channels.cache.get(announceChannelId) || message.channel;
           channel.send({ embeds: [embed] });
         }
       }
