@@ -44,6 +44,10 @@ Date : ${date}`;
         };
 
         try {
+            const [warnRows] = await db.execute(
+                "SELECT * FROM Warns WHERE target_id = ? AND guild_id = ? ORDER BY timestamp DESC",
+                [target.id, guildId]
+            );
             const [banRows] = await db.execute(
                 "SELECT * FROM Ban WHERE target_id = ? AND guild_id = ? ORDER BY timestamp DESC",
                 [target.id, guildId]
@@ -71,6 +75,19 @@ Date : ${date}`;
                 .setColor(0x00aaff)
                 .setFooter({ text: `Demandé par ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
                 .setTimestamp();
+
+            if (warnRows.length) {
+                embed.addFields({
+                    name: "Warns",
+                    value: formatSanction(warnRows, {
+                        executor: "executor_id",
+                        reason: "reason",
+                        timestamp: "timestamp",
+                    }),
+                });
+            } else {
+                embed.addFields({ name: "Warns", value: "Aucun warn enregistré." });
+            }
 
             if (banRows.length) {
                 embed.addFields({

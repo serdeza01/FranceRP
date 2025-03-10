@@ -183,7 +183,8 @@ client.once("ready", async () => {
 
   try {
     await client.application.commands.set(
-      client.commands.map((command) => command.data)
+      client.commands.map((command) => command.data),
+      "871053612971864064"
     );
     console.log("Commandes enregistrées globalement !");
   } catch (error) {
@@ -239,8 +240,8 @@ client.once("ready", async () => {
   await sendTicketPanel(client);
 });
 
-client.on('messageCreate', async (message) => {
-  if (global.reactionChannels.has(message.channel.id)) {
+client.on("messageCreate", async (message) => {
+  if (global.reactionChannels && global.reactionChannels.has(message.channel.id)) {
     await message.react("✅");
     await message.react("❌");
   }
@@ -248,17 +249,128 @@ client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
   const guildId = message.guild.id;
   const discordId = message.author.id;
+  const now = Date.now();
+
+  try {
+    const [configRows] = await db.execute(
+      "SELECT enabled FROM antispam_config WHERE guild_id = ?",
+      [guildId]
+    );
+    if (configRows.length && configRows[0].enabled) {
+      if (!global.spamMap) global.spamMap = new Map();
+      const spamKey = `${guildId}-${discordId}`;
+      let timestamps = global.spamMap.get(spamKey) || [];
+      timestamps.push(now);
+      const spamTimeFrame = 7000; // 7 secondes
+      timestamps = timestamps.filter((ts) => now - ts < spamTimeFrame);
+      global.spamMap.set(spamKey, timestamps);
+
+      console.log(`[AntiSpam] ${spamKey} a ${timestamps.length} messages dans ${spamTimeFrame}ms.`);
+
+      const spamThreshold = 5;
+      if (timestamps.length >= spamThreshold) {
+        try {
+          const fetched = await message.channel.messages.fetch({ limit: 100 });
+          const messagesToDelete = fetched.filter(
+            (m) =>
+              m.author.id === discordId &&
+              now - m.createdTimestamp < spamTimeFrame
+          );
+          if (messagesToDelete.size > 0) {
+            await message.channel.bulkDelete(messagesToDelete, true);
+          }
+        } catch (err) {
+          console.error("Erreur lors de la suppression des messages spam :", err);
+        }
+
+        try {
+          const [rows] = await db.execute(
+            "SELECT warns, kicks FROM antispam_records WHERE guild_id = ? AND user_id = ?",
+            [guildId, discordId]
+          );
+          let warns = 0;
+          let kicks = 0;
+          if (rows.length === 0) {
+            await db.execute(
+              "INSERT INTO antispam_records (guild_id, user_id, warns, kicks) VALUES (?, ?, 1, 0)",
+              [guildId, discordId]
+            );
+            warns = 1;
+          } else {
+            warns = rows[0].warns + 1;
+            kicks = rows[0].kicks;
+            await db.execute(
+              "UPDATE antispam_records SET warns = ? WHERE guild_id = ? AND user_id = ?",
+              [warns, guildId, discordId]
+            );
+          }
+
+          if (warns < 3) {
+            message.channel.send(
+              `<@${discordId}> Attention ! Ce comportement est considéré comme du spam. (Warn ${warns}/3)`
+            );
+          } else if (warns >= 3 && kicks < 2) {
+            try {
+              const member = await message.guild.members.fetch(discordId);
+              if (member) {
+                await member.kick("Anti-spam : accumulation de 3 warns");
+                kicks++;
+                await db.execute(
+                  "UPDATE antispam_records SET kicks = ? WHERE guild_id = ? AND user_id = ?",
+                  [kicks, guildId, discordId]
+                );
+                try {
+                  await message.author.send(
+                    `Vous avez été **kick** du serveur \`${message.guild.name}\` pour spam excessif (3 warns atteints).`
+                  );
+                } catch (err) {
+                  console.error("Impossible d'envoyer un DM à l'utilisateur kick.");
+                }
+                message.channel.send(
+                  `<@${discordId}> a été **kick** pour spam (3 warns).`
+                );
+              }
+            } catch (err) {
+              console.error("Erreur lors du kick anti-spam :", err);
+            }
+          } else if (warns >= 3 && kicks >= 2) {
+            try {
+              const member = await message.guild.members.fetch(discordId);
+              if (member) {
+                await member.ban({ reason: "Anti-spam : accumulation de 3 warns et 2 kicks" });
+                try {
+                  await message.author.send(
+                    `Vous avez été **banni** du serveur \`${message.guild.name}\` pour spam excessif (3 warns et 2 kicks accumulés).`
+                  );
+                } catch (err) {
+                  console.error("Impossible d'envoyer un DM à l'utilisateur banni.");
+                }
+                message.channel.send(
+                  `<@${discordId}> a été **banni** pour spam excessif.`
+                );
+              }
+            } catch (err) {
+              console.error("Erreur lors du ban anti-spam :", err);
+            }
+          }
+        } catch (err) {
+          console.error("Erreur lors du traitement de l'antispam :", err);
+        }
+        global.spamMap.set(spamKey, []);
+      }
+    }
+  } catch (err) {
+    console.error("Erreur lors de la lecture de la configuration anti-spam :", err);
+  }
 
   if (!global.lastMessageTimestamps) global.lastMessageTimestamps = {};
-  const key = `${guildId}-${discordId}`;
-  const now = Date.now();
-  if (global.lastMessageTimestamps[key] && now - global.lastMessageTimestamps[key] < 10000) {
+  const xpKey = `${guildId}-${discordId}`;
+  if (global.lastMessageTimestamps[xpKey] && now - global.lastMessageTimestamps[xpKey] < 10000) {
     return;
   }
-  global.lastMessageTimestamps[key] = now;
+  global.lastMessageTimestamps[xpKey] = now;
 
   const xpEarned = Math.max(1, Math.floor(message.content.length / 10));
-
   try {
     await db.execute(
       `INSERT INTO user_levels (guild_id, discord_id, xp, level)
@@ -295,20 +407,14 @@ client.on('messageCreate', async (message) => {
 
         if (announce) {
           const { EmbedBuilder } = require("discord.js");
-          const user = message.author;
           const embed = new EmbedBuilder()
-            .setTitle("Nouveau Niveau Atteint !")
-            .setDescription(`<@${user.id}> vient d'atteindre le niveau **${level}** !`)
-            .setThumbnail(user.displayAvatarURL({ dynamic: true }))
-            // .setImage("https://lien-de-votre-image-de-fond.com/image.png")
+            .setTitle("Nouveau Niveau Atteint !")
+            .setDescription(`<@${discordId}> vient d'atteindre le niveau **${level}** !`)
+            .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
             .setColor("#00FF00")
             .setTimestamp();
 
-          let channel;
-          if (announceChannelId) {
-            channel = message.guild.channels.cache.get(announceChannelId);
-          }
-          if (!channel) channel = message.channel;
+          let channel = message.guild.channels.cache.get(announceChannelId) || message.channel;
           channel.send({ embeds: [embed] });
         }
       }
@@ -316,7 +422,6 @@ client.on('messageCreate', async (message) => {
   } catch (err) {
     console.error("Erreur dans le système d'XP :", err);
   }
-
 });
 
 client.on("interactionCreate", async (interaction) => {

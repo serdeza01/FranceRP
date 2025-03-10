@@ -28,6 +28,8 @@ module.exports = {
 **/mod unban [userId] [reason]** - Unban un utilisateur
 **/mod kick [user] [reason]** - Kick un utilisateur
 **/mod timeout [user] [reason] [duration]** - Timeout un utilisateur
+**/mod warn [user] [reason]** - Donne un avertissement à un utilisateur
+**/mod clear [amount]** - Supprime un nombre de message précisé
 **/mod blacklist [user] [reason] [duration]** - Blacklist un utilisateur (similaire au /mod ban) mais récupère des informations
 
 **Les commandes de setup :**
