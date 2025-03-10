@@ -92,7 +92,7 @@ module.exports = {
         .addSubcommand((subcommand) =>
             subcommand
                 .setName("warn")
-                .setDescription("Donne un avertissement à un utilisateur et l'enregistre en BDD")
+                .setDescription("Donne un avertissement à un utilisateur")
                 .addUserOption((option) =>
                     option.setName("target").setDescription("Utilisateur à avertir").setRequired(true)
                 )
