@@ -1,6 +1,7 @@
 const {
     SlashCommandBuilder,
     EmbedBuilder,
+    PermissionsBitField,
 } = require("discord.js");
 const db = require("../db");
 
@@ -360,65 +361,84 @@ module.exports = {
                 });
             }
         }
-        else if (subcommand === "lock") {
+        if (subcommand === "lock") {
             try {
-                const overwritesArray = interaction.channel.permissionOverwrites.cache.map((po) => ({
-                    id: po.id,
-                    type: po.type,
-                    allow: po.allow.toArray(),
-                    deny: po.deny.toArray(),
-                }));
+                await interaction.deferReply({ ephemeral: true });
+                const overwritesArray = [];
+                for (const [id, overwrite] of interaction.channel.permissionOverwrites.cache) {
+                    overwritesArray.push({
+                        id: id,
+                        type: overwrite.type,
+                        allow: overwrite.allow.toArray(),
+                        deny: overwrite.deny.toArray()
+                    });
+                }
 
                 await db.execute(
                     "INSERT INTO ChannelLocks (guild_id, channel_id, old_overwrites) VALUES (?, ?, ?)",
                     [guildId, interaction.channel.id, JSON.stringify(overwritesArray)]
                 );
-
-                for (const [overwriteId] of interaction.channel.permissionOverwrites.cache) {
-                    await interaction.channel.permissionOverwrites.edit(overwriteId, { SendMessages: false });
+                for (const [id, _] of interaction.channel.permissionOverwrites.cache) {
+                    try {
+                        await interaction.channel.permissionOverwrites.edit(id, { SendMessages: false });
+                    } catch (innerErr) {
+                        console.error(`Erreur lors de la modification de l'overwrite ${id} :`, innerErr);
+                    }
                 }
-                await interaction.channel.permissionOverwrites.edit(interaction.guild.id, { SendMessages: false });
-
-                await interaction.reply({
-                    content: `Le salon **${interaction.channel.name}** a été verrouillé.`,
-                    ephemeral: true,
+                try {
+                    await interaction.channel.permissionOverwrites.edit(interaction.guild.id, { SendMessages: false });
+                } catch (errEveryone) {
+                    console.error("Erreur lors de la modification pour @everyone :", errEveryone);
+                }
+                await interaction.editReply({
+                    content: `Le salon **${interaction.channel.name}** a été verrouillé.`
                 });
             } catch (err) {
                 console.error("Erreur lors du verrouillage du salon :", err);
-                await interaction.reply({
-                    content: "Erreur lors du verrouillage du salon.",
-                    ephemeral: true,
-                });
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.editReply({
+                        content: "Erreur lors du verrouillage du salon."
+                    });
+                } else {
+                    await interaction.reply({
+                        content: "Erreur lors du verrouillage du salon.",
+                        ephemeral: true
+                    });
+                }
             }
         }
         else if (subcommand === "unlock") {
             try {
+                await interaction.deferReply({ ephemeral: true });
                 const [rows] = await db.execute(
                     "SELECT old_overwrites FROM ChannelLocks WHERE guild_id = ? AND channel_id = ?",
                     [guildId, interaction.channel.id]
                 );
 
                 if (!rows || rows.length === 0) {
-                    return interaction.reply({
-                        content: "Ce salon n'est pas verrouillé ou aucune sauvegarde n'a été trouvée.",
-                        ephemeral: true,
+                    return await interaction.editReply({
+                        content: "Ce salon n'est pas verrouillé ou aucune sauvegarde n'a été trouvée."
                     });
                 }
 
                 const oldOverwrites = JSON.parse(rows[0].old_overwrites);
 
                 for (const ow of oldOverwrites) {
-                    if (interaction.channel.permissionOverwrites.cache.has(ow.id)) {
-                        await interaction.channel.permissionOverwrites.edit(ow.id, {
-                            allow: ow.allow,
-                            deny: ow.deny,
-                        });
-                    } else {
-                        await interaction.channel.permissionOverwrites.create(ow.id, {
-                            allow: ow.allow,
-                            deny: ow.deny,
-                            type: ow.type,
-                        });
+                    try {
+                        if (interaction.channel.permissionOverwrites.cache.has(ow.id)) {
+                            await interaction.channel.permissionOverwrites.edit(ow.id, {
+                                allow: ow.allow,
+                                deny: ow.deny,
+                            });
+                        } else {
+                            await interaction.channel.permissionOverwrites.create(ow.id, {
+                                allow: ow.allow,
+                                deny: ow.deny,
+                                type: ow.type,
+                            });
+                        }
+                    } catch (innerErr) {
+                        console.error(`Erreur lors de la restauration de l'overwrite ${ow.id} :`, innerErr);
                     }
                 }
 
@@ -427,16 +447,21 @@ module.exports = {
                     [guildId, interaction.channel.id]
                 );
 
-                await interaction.reply({
-                    content: `Le salon **${interaction.channel.name}** a été déverrouillé et les permissions ont été restaurées.`,
-                    ephemeral: true,
+                await interaction.editReply({
+                    content: `Le salon **${interaction.channel.name}** a été déverrouillé et les permissions ont été restaurées.`
                 });
             } catch (err) {
                 console.error("Erreur lors du déverrouillage du salon :", err);
-                await interaction.reply({
-                    content: "Erreur lors du déverrouillage du salon.",
-                    ephemeral: true,
-                });
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.editReply({
+                        content: "Erreur lors du déverrouillage du salon."
+                    });
+                } else {
+                    await interaction.reply({
+                        content: "Erreur lors du déverrouillage du salon.",
+                        ephemeral: true
+                    });
+                }
             }
         }
         else if (subcommand === "blacklist-list") {
