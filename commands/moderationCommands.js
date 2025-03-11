@@ -99,6 +99,21 @@ module.exports = {
                 .addStringOption((option) =>
                     option.setName("reason").setDescription("Raison de l'avertissement").setRequired(true)
                 )
+        )
+        .addSubcommand((subcommand) =>
+            subcommand
+                .setName("lock")
+                .setDescription("Verrouille le salon en interdisant l'envoi de messages")
+        )
+        .addSubcommand((subcommand) =>
+            subcommand
+                .setName("unlock")
+                .setDescription("Déverrouille le salon et restaure les permissions précédentes")
+        )
+        .addSubcommand((subcommand) =>
+            subcommand
+                .setName("blacklist-list")
+                .setDescription("Affiche la liste de toutes les personnes blacklistées")
         ),
 
     async execute(interaction) {
@@ -159,7 +174,7 @@ module.exports = {
                     ephemeral: true,
                 });
             }
-        } 
+        }
         else if (subcommand === "unban") {
             const targetId = interaction.options.getString("targetid");
             const reason = interaction.options.getString("reason") || "Aucune raison fournie";
@@ -181,7 +196,7 @@ module.exports = {
                     ephemeral: true,
                 });
             }
-        } 
+        }
         else if (subcommand === "kick") {
             const target = interaction.options.getUser("target");
             const reason = interaction.options.getString("reason") || "Aucune raison fournie";
@@ -214,7 +229,7 @@ module.exports = {
                     ephemeral: true,
                 });
             }
-        } 
+        }
         else if (subcommand === "timeout") {
             const target = interaction.options.getUser("target");
             const durationMinutes = interaction.options.getInteger("duration");
@@ -248,7 +263,7 @@ module.exports = {
                     ephemeral: true,
                 });
             }
-        } 
+        }
         else if (subcommand === "blacklist") {
             const target = interaction.options.getUser("target");
             const reason = interaction.options.getString("reason");
@@ -307,7 +322,7 @@ module.exports = {
                     ephemeral: true,
                 });
             }
-        } 
+        }
         else if (subcommand === "clear") {
             const amount = interaction.options.getInteger("amount");
             try {
@@ -323,7 +338,7 @@ module.exports = {
                     ephemeral: true,
                 });
             }
-        } 
+        }
         else if (subcommand === "warn") {
             const target = interaction.options.getUser("target");
             const reason = interaction.options.getString("reason");
@@ -341,6 +356,120 @@ module.exports = {
                 console.error("Erreur lors de l'enregistrement de l'avertissement :", err);
                 await interaction.reply({
                     content: "Erreur lors de l'avertissement de l'utilisateur.",
+                    ephemeral: true,
+                });
+            }
+        }
+        else if (subcommand === "lock") {
+            try {
+                const overwritesArray = interaction.channel.permissionOverwrites.cache.map((po) => ({
+                    id: po.id,
+                    type: po.type,
+                    allow: po.allow.toArray(),
+                    deny: po.deny.toArray(),
+                }));
+
+                await db.execute(
+                    "INSERT INTO ChannelLocks (guild_id, channel_id, old_overwrites) VALUES (?, ?, ?)",
+                    [guildId, interaction.channel.id, JSON.stringify(overwritesArray)]
+                );
+
+                for (const [overwriteId] of interaction.channel.permissionOverwrites.cache) {
+                    await interaction.channel.permissionOverwrites.edit(overwriteId, { SendMessages: false });
+                }
+                await interaction.channel.permissionOverwrites.edit(interaction.guild.id, { SendMessages: false });
+
+                await interaction.reply({
+                    content: `Le salon **${interaction.channel.name}** a été verrouillé.`,
+                    ephemeral: true,
+                });
+            } catch (err) {
+                console.error("Erreur lors du verrouillage du salon :", err);
+                await interaction.reply({
+                    content: "Erreur lors du verrouillage du salon.",
+                    ephemeral: true,
+                });
+            }
+        }
+        else if (subcommand === "unlock") {
+            try {
+                const [rows] = await db.execute(
+                    "SELECT old_overwrites FROM ChannelLocks WHERE guild_id = ? AND channel_id = ?",
+                    [guildId, interaction.channel.id]
+                );
+
+                if (!rows || rows.length === 0) {
+                    return interaction.reply({
+                        content: "Ce salon n'est pas verrouillé ou aucune sauvegarde n'a été trouvée.",
+                        ephemeral: true,
+                    });
+                }
+
+                const oldOverwrites = JSON.parse(rows[0].old_overwrites);
+
+                for (const ow of oldOverwrites) {
+                    if (interaction.channel.permissionOverwrites.cache.has(ow.id)) {
+                        await interaction.channel.permissionOverwrites.edit(ow.id, {
+                            allow: ow.allow,
+                            deny: ow.deny,
+                        });
+                    } else {
+                        await interaction.channel.permissionOverwrites.create(ow.id, {
+                            allow: ow.allow,
+                            deny: ow.deny,
+                            type: ow.type,
+                        });
+                    }
+                }
+
+                await db.execute(
+                    "DELETE FROM ChannelLocks WHERE guild_id = ? AND channel_id = ?",
+                    [guildId, interaction.channel.id]
+                );
+
+                await interaction.reply({
+                    content: `Le salon **${interaction.channel.name}** a été déverrouillé et les permissions ont été restaurées.`,
+                    ephemeral: true,
+                });
+            } catch (err) {
+                console.error("Erreur lors du déverrouillage du salon :", err);
+                await interaction.reply({
+                    content: "Erreur lors du déverrouillage du salon.",
+                    ephemeral: true,
+                });
+            }
+        }
+        else if (subcommand === "blacklist-list") {
+            try {
+                const [rows] = await db.execute(
+                    "SELECT * FROM Blacklist WHERE guild_id = ? ORDER BY timestamp DESC",
+                    [guildId]
+                );
+                if (!rows || rows.length === 0) {
+                    return interaction.reply({
+                        content: "Aucun utilisateur n'est actuellement blacklisté sur ce serveur.",
+                        ephemeral: true,
+                    });
+                }
+
+                const embed = new EmbedBuilder()
+                    .setTitle("Liste des utilisateurs blacklistés")
+                    .setColor(0xff0000)
+                    .setFooter({ text: `Total: ${rows.length}` });
+
+                rows.forEach((row) => {
+                    embed.addFields({
+                        name: `${row.user_tag} (${row.user_id})`,
+                        value: `**Raison :** ${row.reason}\n**Durée :** ${row.duration || "Indéterminée"}\n**Date :** ${new Date(row.timestamp).toLocaleString()}`,
+                        inline: false,
+                    });
+                });
+
+                await interaction.reply({ embeds: [embed], ephemeral: true });
+            } catch (err) {
+                console.error("Erreur lors de la récupération de la blacklist :", err);
+                await interaction.reply({
+                    content: "Erreur lors de la récupération de la liste des utilisateurs blacklistés.",
                     ephemeral: true,
                 });
             }
