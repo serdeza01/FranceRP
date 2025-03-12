@@ -184,7 +184,6 @@ client.once("ready", async () => {
   try {
     await client.application.commands.set(
       client.commands.map((command) => command.data),
-      "871053612971864064"
     );
     console.log("Commandes enregistrées globalement !");
   } catch (error) {
@@ -265,7 +264,9 @@ client.on("messageCreate", async (message) => {
       timestamps = timestamps.filter((ts) => now - ts < spamTimeFrame);
       global.spamMap.set(spamKey, timestamps);
 
-      console.log(`[AntiSpam] ${spamKey} a ${timestamps.length} messages dans ${spamTimeFrame}ms.`);
+      console.log(
+        `[AntiSpam] ${spamKey} a ${timestamps.length} messages dans ${spamTimeFrame}ms.`
+      );
 
       const spamThreshold = 5;
       if (timestamps.length >= spamThreshold) {
@@ -421,6 +422,66 @@ client.on("messageCreate", async (message) => {
     }
   } catch (err) {
     console.error("Erreur dans le système d'XP :", err);
+  }
+  try {
+    const [sanctionConfigRows] = await db.execute(
+      "SELECT channel_id, embed_channel_id FROM sanction_config WHERE guild_id = ?",
+      [guildId]
+    );
+
+    if (sanctionConfigRows.length) {
+      const { channel_id, embed_channel_id } = sanctionConfigRows[0];
+      if (message.channel.id === channel_id) {
+        const regex = /^Pseudo\s*:\s*(.+)\nRaison\s*:\s*(.+)\nSanction\s*:\s*(.+)$/i;
+        const match = message.content.match(regex);
+        if (match) {
+          const pseudo = match[1].trim();
+          const raison = match[2].trim();
+          const sanctionRaw = match[3].trim();
+
+          let duration;
+          const durRegex = /^(\d+)([JMA])$/i;
+          if (durRegex.test(sanctionRaw)) {
+            const parts = sanctionRaw.match(durRegex);
+            const nombre = parts[1];
+            const uniteLetter = parts[2].toUpperCase();
+            let unite;
+            if (uniteLetter === "J") unite = "jour(s)";
+            else if (uniteLetter === "M") unite = "mois";
+            else if (uniteLetter === "A") unite = "an(s)";
+            duration = `${nombre} ${unite}`;
+          } else if (/^(perm|permanent)$/i.test(sanctionRaw)) {
+            duration = "Permanent";
+          } else {
+            return;
+          }
+
+          await db.execute(
+            "INSERT INTO sanctions (guild_id, punisher_id, pseudo, raison, duration) VALUES (?, ?, ?, ?, ?)",
+            [guildId, message.author.id, pseudo, raison, duration]
+          );
+
+          const { EmbedBuilder } = require("discord.js");
+          const embed = new EmbedBuilder()
+            .setTitle("Sanction enregistrée")
+            .addFields(
+              { name: "Pseudo", value: pseudo, inline: true },
+              { name: "Raison", value: raison, inline: true },
+              { name: "Durée", value: duration, inline: true },
+              { name: "Sanctionné par", value: `<@${message.author.id}>`, inline: true }
+            )
+            .setColor(0xff0000)
+            .setTimestamp();
+
+          const sanctionEmbedChannel = message.guild.channels.cache.get(embed_channel_id);
+          if (sanctionEmbedChannel) {
+            sanctionEmbedChannel.send({ embeds: [embed] });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Erreur lors du traitement des sanctions :", err);
   }
 });
 
