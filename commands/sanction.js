@@ -19,7 +19,7 @@ module.exports = {
         const sub = interaction.options.getSubcommand();
         const guildId = interaction.guild.id;
 
-        if (sub === "EH") {
+        if (sub === "eh") {
             const pseudoRecherche = interaction.options.getString("pseudo");
 
             const [configRows] = await db.execute("SELECT allowed_role_id FROM sanction_config WHERE guild_id = ?", [guildId]);
@@ -64,7 +64,7 @@ module.exports = {
                 });
             });
 
-            return interaction.reply({ embeds: [embed], ephemeral: true });
+            return interaction.reply({ embeds: [embed], ephemeral: false });
         }
     }
 };
