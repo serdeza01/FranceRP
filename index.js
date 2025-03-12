@@ -22,13 +22,12 @@ global.database = db;
 
 async function initDatabase() {
   try {
-    await db
-      .execute(
-        `CREATE TABLE IF NOT EXISTS presence_embed (
+    await db.execute(
+      `CREATE TABLE IF NOT EXISTS presence_embed (
           channel_id VARCHAR(255) PRIMARY KEY,
           message_id VARCHAR(255)
         )`
-      );
+    );
 
     await db.execute(
       `CREATE TABLE IF NOT EXISTS user_roblox (
@@ -125,7 +124,10 @@ async function updatePresenceEmbedMessage(guild, channelId) {
     }
 
     if (!global.lastMessageId || !sentMessage) {
-      const newMessage = await channelObj.send({ embeds: [embed], files: [file] });
+      const newMessage = await channelObj.send({
+        embeds: [embed],
+        files: [file],
+      });
       global.lastMessageId = newMessage.id;
 
       await db.promise().execute(
@@ -160,16 +162,21 @@ async function updateTicketEmbed(guild, channelId) {
 
 client.once("ready", async () => {
   function updateBotStatus() {
-    const totalMembers = client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
+    const totalMembers = client.guilds.cache.reduce(
+      (acc, guild) => acc + guild.memberCount,
+      0
+    );
     console.log(`Mise à jour du statut : ${totalMembers} membres.`);
-    
+
     try {
       client.user.setPresence({
-        activities: [{
-          name: `${totalMembers} members`,
-          type: ActivityType.Watching
-        }],
-        status: "online"
+        activities: [
+          {
+            name: `${totalMembers} members`,
+            type: ActivityType.Watching,
+          },
+        ],
+        status: "online",
       });
       console.log("Présence mise à jour");
     } catch (err) {
@@ -177,17 +184,20 @@ client.once("ready", async () => {
     }
   }
   console.log(`Bot connecté en tant que ${client.user.tag}`);
-  
+
   updateBotStatus();
   setInterval(updateBotStatus, 60000);
 
   try {
     await client.application.commands.set(
-      client.commands.map((command) => command.data),
+      client.commands.map((command) => command.data)
     );
     console.log("Commandes enregistrées globalement !");
   } catch (error) {
-    console.error("Erreur lors de l'enregistrement des commandes globales :", error);
+    console.error(
+      "Erreur lors de l'enregistrement des commandes globales :",
+      error
+    );
   }
 
   try {
@@ -199,7 +209,10 @@ client.once("ready", async () => {
       global.lastMessageId = rows[0].message_id;
     }
   } catch (error) {
-    console.error("Erreur lors de la récupération de l'embed de présence en BDD :", error);
+    console.error(
+      "Erreur lors de la récupération de l'embed de présence en BDD :",
+      error
+    );
   }
 
   try {
@@ -224,7 +237,9 @@ client.once("ready", async () => {
       try {
         presenceMessage = await channel.messages.fetch(global.lastMessageId);
       } catch (err) {
-        console.error("L'embed stocké en BDD est introuvable. Création d'un nouvel embed...");
+        console.error(
+          "L'embed stocké en BDD est introuvable. Création d'un nouvel embed..."
+        );
         presenceMessage = await updatePresenceEmbedMessage(guild, CHANNEL_ID);
       }
     }
@@ -233,14 +248,20 @@ client.once("ready", async () => {
       await presenceMessage.edit({ embeds: [newEmbed] });
     }
   } catch (error) {
-    console.error("Erreur lors de la récupération des membres ou mise à jour de l'embed :", error);
+    console.error(
+      "Erreur lors de la récupération des membres ou mise à jour de l'embed :",
+      error
+    );
   }
 
   await sendTicketPanel(client);
 });
 
 client.on("messageCreate", async (message) => {
-  if (global.reactionChannels && global.reactionChannels.has(message.channel.id)) {
+  if (
+    global.reactionChannels &&
+    global.reactionChannels.has(message.channel.id)
+  ) {
     await message.react("✅");
     await message.react("❌");
   }
@@ -281,7 +302,10 @@ client.on("messageCreate", async (message) => {
             await message.channel.bulkDelete(messagesToDelete, true);
           }
         } catch (err) {
-          console.error("Erreur lors de la suppression des messages spam :", err);
+          console.error(
+            "Erreur lors de la suppression des messages spam :",
+            err
+          );
         }
 
         try {
@@ -325,7 +349,9 @@ client.on("messageCreate", async (message) => {
                     `Vous avez été **kick** du serveur \`${message.guild.name}\` pour spam excessif (3 warns atteints).`
                   );
                 } catch (err) {
-                  console.error("Impossible d'envoyer un DM à l'utilisateur kick.");
+                  console.error(
+                    "Impossible d'envoyer un DM à l'utilisateur kick."
+                  );
                 }
                 message.channel.send(
                   `<@${discordId}> a été **kick** pour spam (3 warns).`
@@ -338,13 +364,17 @@ client.on("messageCreate", async (message) => {
             try {
               const member = await message.guild.members.fetch(discordId);
               if (member) {
-                await member.ban({ reason: "Anti-spam : accumulation de 3 warns et 2 kicks" });
+                await member.ban({
+                  reason: "Anti-spam : accumulation de 3 warns et 2 kicks",
+                });
                 try {
                   await message.author.send(
                     `Vous avez été **banni** du serveur \`${message.guild.name}\` pour spam excessif (3 warns et 2 kicks accumulés).`
                   );
                 } catch (err) {
-                  console.error("Impossible d'envoyer un DM à l'utilisateur banni.");
+                  console.error(
+                    "Impossible d'envoyer un DM à l'utilisateur banni."
+                  );
                 }
                 message.channel.send(
                   `<@${discordId}> a été **banni** pour spam excessif.`
@@ -361,12 +391,18 @@ client.on("messageCreate", async (message) => {
       }
     }
   } catch (err) {
-    console.error("Erreur lors de la lecture de la configuration anti-spam :", err);
+    console.error(
+      "Erreur lors de la lecture de la configuration anti-spam :",
+      err
+    );
   }
 
   if (!global.lastMessageTimestamps) global.lastMessageTimestamps = {};
   const xpKey = `${guildId}-${discordId}`;
-  if (global.lastMessageTimestamps[xpKey] && now - global.lastMessageTimestamps[xpKey] < 10000) {
+  if (
+    global.lastMessageTimestamps[xpKey] &&
+    now - global.lastMessageTimestamps[xpKey] < 10000
+  ) {
     return;
   }
   global.lastMessageTimestamps[xpKey] = now;
@@ -410,12 +446,16 @@ client.on("messageCreate", async (message) => {
           const { EmbedBuilder } = require("discord.js");
           const embed = new EmbedBuilder()
             .setTitle("Nouveau Niveau Atteint !")
-            .setDescription(`<@${discordId}> vient d'atteindre le niveau **${level}** !`)
+            .setDescription(
+              `<@${discordId}> vient d'atteindre le niveau **${level}** !`
+            )
             .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
             .setColor("#00FF00")
             .setTimestamp();
 
-          let channel = message.guild.channels.cache.get(announceChannelId) || message.channel;
+          let channel =
+            message.guild.channels.cache.get(announceChannelId) ||
+            message.channel;
           channel.send({ embeds: [embed] });
         }
       }
@@ -432,16 +472,22 @@ client.on("messageCreate", async (message) => {
     if (sanctionConfigRows.length) {
       const { channel_id, embed_channel_id } = sanctionConfigRows[0];
       if (message.channel.id === channel_id) {
-        const regex = /^Pseudo\s*:\s*(.+)\nRaison\s*:\s*(.+)\nSanction\s*:\s*(.+)$/i;
+        const regex =
+          /^Pseudo\s*:\s*(.+)\nRaison\s*:\s*(.+)\nSanction\s*:\s*(.+)$/i;
         const match = message.content.match(regex);
         if (match) {
           const pseudo = match[1].trim();
           const raison = match[2].trim();
           const sanctionRaw = match[3].trim();
 
-          let duration;
+          let duration = "";
           const durRegex = /^(\d+)([JMA])$/i;
-          if (durRegex.test(sanctionRaw)) {
+
+          if (/^warn$/i.test(sanctionRaw)) {
+            duration = "Warn";
+          } else if (/^kick$/i.test(sanctionRaw)) {
+            duration = "Kick";
+          } else if (durRegex.test(sanctionRaw)) {
             const parts = sanctionRaw.match(durRegex);
             const nombre = parts[1];
             const uniteLetter = parts[2].toUpperCase();
@@ -461,19 +507,23 @@ client.on("messageCreate", async (message) => {
             [guildId, message.author.id, pseudo, raison, duration]
           );
 
-          const { EmbedBuilder } = require("discord.js");
           const embed = new EmbedBuilder()
             .setTitle("Sanction enregistrée")
             .addFields(
               { name: "Pseudo", value: pseudo, inline: true },
               { name: "Raison", value: raison, inline: true },
-              { name: "Durée", value: duration, inline: true },
-              { name: "Sanctionné par", value: `<@${message.author.id}>`, inline: true }
+              { name: "Sanction", value: duration, inline: true },
+              {
+                name: "Sanctionné par",
+                value: `<@${message.author.id}>`,
+                inline: true,
+              }
             )
             .setColor(0xff0000)
             .setTimestamp();
 
-          const sanctionEmbedChannel = message.guild.channels.cache.get(embed_channel_id);
+          const sanctionEmbedChannel =
+            message.guild.channels.cache.get(embed_channel_id);
           if (sanctionEmbedChannel) {
             sanctionEmbedChannel.send({ embeds: [embed] });
           }
