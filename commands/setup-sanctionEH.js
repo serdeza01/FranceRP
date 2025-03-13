@@ -133,7 +133,7 @@ async function processSanctionHistory(guild, sanctionChannel, embedChannel) {
       const sanctionRaw = match[3].trim();
 
       let duration = "";
-      const durRegex = /^(\d+)([JMA])$/i;
+      const durRegex = /^(\d+)\s*([JMA])$/i;
       if (/^warn$/i.test(sanctionRaw)) {
         duration = "Warn";
       } else if (/^kick$/i.test(sanctionRaw)) {

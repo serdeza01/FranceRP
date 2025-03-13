@@ -481,7 +481,7 @@ client.on("messageCreate", async (message) => {
           const sanctionRaw = match[3].trim();
 
           let duration = "";
-          const durRegex = /^(\d+)([JMA])$/i;
+          const durRegex = /^(\d+)\s*([JMA])$/i;
 
           if (/^warn$/i.test(sanctionRaw)) {
             duration = "Warn";
