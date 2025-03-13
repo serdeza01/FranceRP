@@ -31,6 +31,7 @@ module.exports = {
 **/mod warn [user] [reason]** - Donne un avertissement à un utilisateur
 **/mod clear [amount]** - Supprime un nombre de message précisé
 **/mod blacklist [user] [reason] [duration]** - Blacklist un utilisateur (similaire au /mod ban) mais récupère des informations
+**/sanction eh [pseudo]** - Permet de trouver l'historique de sanction d'un joueur roblox
 
 **Les commandes de setup :**
 
@@ -40,6 +41,8 @@ module.exports = {
 **/setup-assurance** - Setup le système d'assurance
 **/setup-presence** - Setup le système de la présence des staff en jeu
 **/delete-config** - Supprime la configuration actuel des tickets
+**/setup-antispam** - Setup le système d'antispam
+**/setup-sanctioneh** - Setup le système de sanction
 
 **Les autres commandes :**
 
@@ -55,6 +58,8 @@ module.exports = {
 **/permis** - Affiche son permis
 **/presence** - Permet d'afficher sa disponibilité en tant que staff
 **/rename** - Permet de renommer un ticket
+**/giveaway** - Permet de créer un giveaway
+**/link [guildId]** - Permet de relier 2 serveur pour partager l'historique des sanctions
       `)
       .setColor("#00ff00")
       .setFooter({ text: "Made by serdeza" })
