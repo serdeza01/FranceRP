@@ -178,7 +178,7 @@ module.exports = {
 
     const gameMessage = await interaction.followUp({ embeds: [updateEmbed()] });
 
-    const filter = m => m.content.length === 1 && /^[a-zA-Z]$/.test(m.content);
+    const filter = m => m.content.length === 1 && /\p{L}/u.test(m.content);
     const collector = interaction.channel.createMessageCollector({ filter, time: 300000 });
 
     collector.on("collect", m => {
