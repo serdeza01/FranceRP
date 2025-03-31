@@ -4,6 +4,7 @@ const express = require("express");
 const session = require("express-session");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
+const https = require("https");
 
 const {
   Client,
@@ -33,9 +34,12 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "change_me",
+    secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production",
+    },
   })
 );
 
@@ -74,6 +78,11 @@ const getGuild = async (guildId) => {
 };
 
 const guildFeatures = {};
+
+const httpsOptions = {
+  key: fs.readFileSync("./key.pem"),
+  cert: fs.readFileSync("./cert.pem"),
+};
 
 app.get("/guilds/:guild", async (req, res) => {
   const guildId = req.params.guild;
@@ -168,8 +177,8 @@ app.get("/guilds/:guild/channels", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`API server running on port ${PORT}`);
+https.createServer(httpsOptions, app).listen(PORT, () => {
+  console.log(`Serveur HTTPS lancé sur le port ${PORT}`);
 });
 
 async function initDatabase() {
