@@ -1,3 +1,9 @@
+require("dotenv").config();
+
+const express = require("express");
+const session = require("express-session");
+const cookieParser = require("cookie-parser");
+
 const {
   Client,
   GatewayIntentBits,
@@ -6,9 +12,9 @@ const {
   EmbedBuilder,
   ActivityType,
 } = require("discord.js");
+
 const fs = require("fs");
 const path = require("path");
-require("dotenv").config();
 const axios = require("axios");
 
 const { sendTicketPanel } = require("./ticketPanel");
@@ -16,9 +22,147 @@ const {
   updatePresenceEmbed,
   buildPresenceEmbed,
 } = require("./commands/presence");
-
 const db = require("./db");
 global.database = db;
+
+const app = express();
+const PORT = process.env.API_PORT || 8080;
+
+app.use(express.json());
+app.use(cookieParser());
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "change_me",
+    resave: false,
+    saveUninitialized: false,
+  })
+);
+
+app.get("/auth", (req, res) => {
+  if (req.session && req.session.accessToken) {
+    res.json({ accessToken: req.session.accessToken });
+  } else {
+    res.status(401).json({ error: "Not authenticated" });
+  }
+});
+
+app.post("/auth/signout", (req, res) => {
+  req.session.destroy((err) => {
+    if (err) return res.status(500).json({ error: "Signout failed" });
+    res.json({ message: "Signed out" });
+  });
+});
+
+const getGuild = async (guildId) => {
+  let guild = client.guilds.cache.get(guildId);
+  if (!guild) {
+    try {
+      guild = await client.guilds.fetch(guildId);
+    } catch (err) {
+      throw new Error("Guild not found");
+    }
+  }
+  return guild;
+};
+
+const guildFeatures = {};
+
+app.get("/guilds/:guild", async (req, res) => {
+  const guildId = req.params.guild;
+  try {
+    const guild = await getGuild(guildId);
+    const guildInfo = {
+      id: guild.id,
+      name: guild.name,
+      icon: guild.iconURL({ dynamic: true }),
+      memberCount: guild.memberCount,
+    };
+    res.json(guildInfo);
+  } catch (error) {
+    res.status(404).json({ error: "Guild not found" });
+  }
+});
+
+app.get("/guilds/:guild/features/:feature", (req, res) => {
+  const { guild, feature } = req.params;
+  const featuresConfig = guildFeatures[guild] || {};
+  if (featuresConfig[feature]) {
+    res.json(featuresConfig[feature]);
+  } else {
+    res.status(404).json({ error: "Feature not enabled or not found" });
+  }
+});
+
+app.patch("/guilds/:guild/features/:feature", (req, res) => {
+  const { guild, feature } = req.params;
+  const options = req.body;
+  if (!guildFeatures[guild] || !guildFeatures[guild][feature]) {
+    return res.status(404).json({ error: "Feature not enabled" });
+  }
+  guildFeatures[guild][feature].options = {
+    ...guildFeatures[guild][feature].options,
+    ...options,
+  };
+  res.json(guildFeatures[guild][feature]);
+});
+
+app.post("/guilds/:guild/features/:feature", (req, res) => {
+  const { guild, feature } = req.params;
+  const options = req.body || {};
+  if (!guildFeatures[guild]) {
+    guildFeatures[guild] = {};
+  }
+  guildFeatures[guild][feature] = {
+    enabled: true,
+    options: options,
+  };
+  res.json(guildFeatures[guild][feature]);
+});
+
+app.delete("/guilds/:guild/features/:feature", (req, res) => {
+  const { guild, feature } = req.params;
+  if (guildFeatures[guild] && guildFeatures[guild][feature]) {
+    delete guildFeatures[guild][feature];
+    res.json({ message: "Feature disabled" });
+  } else {
+    res.status(404).json({ error: "Feature not enabled" });
+  }
+});
+
+app.get("/guilds/:guild/roles", async (req, res) => {
+  const guildId = req.params.guild;
+  try {
+    const guild = await getGuild(guildId);
+    const roles = guild.roles.cache.map((r) => ({
+      id: r.id,
+      name: r.name,
+      color: r.color,
+      permissions: r.permissions.serialize(),
+    }));
+    res.json(roles);
+  } catch (error) {
+    res.status(404).json({ error: "Guild not found" });
+  }
+});
+
+app.get("/guilds/:guild/channels", async (req, res) => {
+  const guildId = req.params.guild;
+  try {
+    const guild = await getGuild(guildId);
+    const channels = guild.channels.cache.map((c) => ({
+      id: c.id,
+      name: c.name,
+      type: c.type,
+    }));
+    res.json(channels);
+  } catch (error) {
+    res.status(404).json({ error: "Guild not found" });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`API server running on port ${PORT}`);
+});
 
 async function initDatabase() {
   try {
@@ -443,7 +587,6 @@ client.on("messageCreate", async (message) => {
         }
 
         if (announce) {
-          const { EmbedBuilder } = require("discord.js");
           const embed = new EmbedBuilder()
             .setTitle("Nouveau Niveau Atteint !")
             .setDescription(
@@ -539,7 +682,6 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.isCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
-
     try {
       const context = {
         STAFF_ROLE_ID,
@@ -551,7 +693,6 @@ client.on("interactionCreate", async (interaction) => {
         updatePresenceEmbed: updatePresenceEmbedMessage,
         CHANNEL_ID,
       };
-
       await command.execute(interaction, client, context);
     } catch (error) {
       console.error(error);
@@ -564,14 +705,12 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.customId === "connectRobloxModal") {
       const username = interaction.fields.getTextInputValue("roblox_username");
       const discordId = interaction.user.id;
-
       try {
         const response = await axios.get(
           `https://api.roblox.com/users/get-by-username?username=${encodeURIComponent(
             username
           )}`
         );
-
         if (!response.data || response.data.Id === 0) {
           return interaction.reply({
             content:
@@ -579,7 +718,6 @@ client.on("interactionCreate", async (interaction) => {
             flags: 1 << 6,
           });
         }
-
         const robloxId = response.data.Id;
         await db.promise().execute(
           `
@@ -591,7 +729,6 @@ client.on("interactionCreate", async (interaction) => {
         `,
           [discordId, username, robloxId]
         );
-
         await interaction.reply({
           content: `Ton compte Roblox **${username}** (ID: ${robloxId}) a été associé à ton compte Discord !`,
           flags: 1 << 6,
