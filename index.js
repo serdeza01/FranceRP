@@ -41,9 +41,8 @@ app.use(
 
 app.use(
   cors({
-    origin: process.env.DASHBOARD_URL || "http://localhost:3000",
+    origin: "*",
     methods: ["GET", "POST", "PATCH", "DELETE"],
-    credentials: true,
   })
 );
 
