@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const session = require("express-session");
 const cookieParser = require("cookie-parser");
+const cors = require("cors");
 
 const {
   Client,
@@ -35,6 +36,14 @@ app.use(
     secret: process.env.SESSION_SECRET || "change_me",
     resave: false,
     saveUninitialized: false,
+  })
+);
+
+app.use(
+  cors({
+    origin: process.env.DASHBOARD_URL || "http://localhost:3000",
+    methods: ["GET", "POST", "PATCH", "DELETE"],
+    credentials: true,
   })
 );
 
