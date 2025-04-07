@@ -5,7 +5,7 @@ const session = require("express-session");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const https = require("https");
-
+const schedule = require("node-schedule");
 const {
   Client,
   GatewayIntentBits,
@@ -29,7 +29,7 @@ global.database = db;
 
 const app = express();
 const PORT = process.env.API_PORT || 8080;
-
+/*
 app.use(express.json());
 app.use(cookieParser());
 app.use(
@@ -180,7 +180,7 @@ app.get("/guilds/:guild/channels", async (req, res) => {
 https.createServer(httpsOptions, app).listen(PORT, () => {
   console.log(`Serveur HTTPS lancé sur le port ${PORT}`);
 });
-
+*/
 async function initDatabase() {
   try {
     await db.execute(
@@ -416,6 +416,65 @@ client.once("ready", async () => {
   }
 
   await sendTicketPanel(client);
+
+  async function sendStaffPresenceReminderDM() {
+    try {
+      const [configRows] = await db.execute(
+        "SELECT guild_id FROM dm_config WHERE type = 'staff_presence' AND active = TRUE"
+      );
+
+      if (configRows.length === 0) {
+        return;
+      }
+
+      for (const config of configRows) {
+        try {
+          const guild = await client.guilds.fetch(config.guild_id).catch(() => null);
+          if (!guild) continue;
+
+          const [staffRows] = await db.execute(
+            "SELECT user_id FROM staff_presence WHERE guild_id = ? AND present = TRUE",
+            [config.guild_id]
+          );
+
+          if (staffRows.length === 0) continue;
+
+          for (const staff of staffRows) {
+            try {
+              const user = await client.users.fetch(staff.user_id);
+              if (user) {
+                await user.send(
+                  `Attention ! Sur le serveur **${guild.name}**, n'oublie pas d'enlever ta présence en tant que staff ! Utilise la commande \`/presence\` pour mettre à jour ton statut.`
+                );
+              }
+            } catch (err) {
+              console.error(
+                `Impossible d'envoyer un DM à l'utilisateur ${staff.user_id} pour le serveur ${guild.name} :`,
+                err
+              );
+            }
+          }
+        } catch (guildError) {
+          console.error(
+            `Erreur lors du traitement du serveur avec l'ID ${config.guild_id} :`,
+            guildError
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Erreur lors de l'envoi des rappels DM :", error);
+    }
+  }
+  schedule.scheduleJob({ hour: 1, minute: 0, tz: "Europe/Paris" }, () => {
+    console.log("Lancement de l'envoi des rappels DM de présence staff à 1h00.");
+    sendStaffPresenceReminderDM();
+  });
+
+  schedule.scheduleJob({ hour: 8, minute: 30, tz: "Europe/Paris" }, () => {
+    console.log("Lancement de l'envoi des rappels DM de présence staff à 8h30.");
+    sendStaffPresenceReminderDM();
+  });
+
 });
 
 client.on("messageCreate", async (message) => {
