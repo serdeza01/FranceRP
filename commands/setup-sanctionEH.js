@@ -30,7 +30,9 @@ module.exports = {
     .addRoleOption((option) =>
       option
         .setName("role")
-        .setDescription("Le rôle autorisé à utiliser la commande /sanction EH")
+        .setDescription(
+          "Le rôle autorisé à utiliser la commande /sanction EH"
+        )
         .setRequired(true)
     ),
 
@@ -44,45 +46,30 @@ module.exports = {
     }
 
     const guildId = interaction.guild.id;
-    const channel = interaction.options.getChannel("channel");
+    const watchChannel = interaction.options.getChannel("channel");
     const embedChannel = interaction.options.getChannel("embed-channel");
     const allowedRole = interaction.options.getRole("role");
-    const query = `
-        INSERT INTO sanction_config (guild_id, channel_id, embed_channel_id, allowed_role_id)
-        VALUES (?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE channel_id = VALUES(channel_id), embed_channel_id = VALUES(embed_channel_id), allowed_role_id = VALUES(allowed_role_id)
-      `;
 
     try {
-      await db.execute(query, [
-        guildId,
-        channel.id,
-        embedChannel.id,
-        allowedRole.id,
-      ]);
+      await db.execute(
+        "INSERT INTO sanction_watch_channels (guild_id, channel_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE channel_id = VALUES(channel_id)",
+        [guildId, watchChannel.id]
+      );
 
-      const embed = new EmbedBuilder()
-        .setTitle("Configuration sanctionEH enregistrée !")
-        .setDescription(
-          `Salon de lecture: <#${channel.id}>
-  Salon d'embed: <#${embedChannel.id}>
-  Rôle autorisé: ${allowedRole.name}`
-        )
-        .setColor(0x00aaff)
-        .setTimestamp();
+      await db.execute(
+        "INSERT INTO sanction_config (guild_id, channel_id, embed_channel_id, allowed_role_id) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE channel_id = VALUES(channel_id), embed_channel_id = VALUES(embed_channel_id), allowed_role_id = VALUES(allowed_role_id)",
+        [guildId, watchChannel.id, embedChannel.id, allowedRole.id]
+      );
 
-      await embedChannel.send({ embeds: [embed] });
       await interaction.reply({
         content:
-          "✅ La configuration sanctionEH a été mise à jour avec succès.",
+          "✅ Le système de sanctions EH a été configuré avec succès.",
         ephemeral: true,
       });
-
-      processSanctionHistory(interaction.guild, channel, embedChannel);
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error("Erreur lors de la configuration des sanctions EH :", error);
       return interaction.reply({
-        content: "❌ Une erreur est survenue lors de la configuration.",
+        content: "❌ Une erreur s'est produite lors de la configuration des sanctions EH.",
         ephemeral: true,
       });
     }

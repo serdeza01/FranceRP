@@ -683,6 +683,13 @@ client.on("messageCreate", async (message) => {
     console.error("Erreur dans le système d'XP :", err);
   }
   try {
+    const [rows] = await db.execute(
+      "SELECT channel_id FROM sanction_watch_channels WHERE guild_id = ? AND channel_id = ?",
+      [guildId, channelId]
+    );
+    if (rows.length === 0) {
+      return;
+    }
     const [sanctionConfigRows] = await db.execute(
       "SELECT channel_id, embed_channel_id FROM sanction_config WHERE guild_id = ?",
       [guildId]
