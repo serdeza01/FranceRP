@@ -15,7 +15,7 @@ module.exports = {
             .setName("channel")
             .setDescription("Salon ou thread à surveiller")
             .setRequired(true)
-            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildPublicThread, ChannelType.GuildPrivateThread)
+            .addChannelTypes(ChannelType.GuildText, ChannelType.PublicThread, ChannelType.PrivateThread)
         )
     )
     .addSubcommand(subcommand =>
@@ -27,7 +27,7 @@ module.exports = {
             .setName("channel")
             .setDescription("Salon ou thread à retirer")
             .setRequired(true)
-            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildPublicThread, ChannelType.GuildPrivateThread)
+            .addChannelTypes(ChannelType.GuildText, ChannelType.PublicThread, ChannelType.PrivateThread)
         )
     ),
   async execute(interaction) {

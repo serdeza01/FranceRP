@@ -43,6 +43,8 @@ module.exports = {
 **/delete-config** - Supprime la configuration actuel des tickets
 **/setup-antispam** - Setup le système d'antispam
 **/setup-sanctioneh** - Setup le système de sanction
+**/setup-dm** - Setup le système de message privé
+**/setup-sanction-channels** - Permet d'ajouter ou retirer un channel/thread pour vérifier les sanctions
 
 **Les autres commandes :**
 
