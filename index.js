@@ -675,78 +675,66 @@ client.on("messageCreate", async (message) => {
   }
 
   try {
-    const [rows] = await db.execute(
-      "SELECT channel_id FROM sanction_watch_channels WHERE guild_id = ? AND channel_id = ?",
-      [guildId, message.channel.id]
-    );
-    if (rows.length === 0) {
-      return;
-    }
     const [sanctionConfigRows] = await db.execute(
-      "SELECT channel_id, embed_channel_id FROM sanction_config WHERE guild_id = ?",
+      "SELECT channel_ids, embed_channel_id FROM sanction_config WHERE guild_id = ?",
       [guildId]
     );
+    if (sanctionConfigRows.length === 0) return;
+    const channelIds = JSON.parse(sanctionConfigRows[0].channel_ids);
+    if (!channelIds.includes(message.channel.id)) return;
 
-    if (sanctionConfigRows.length) {
-      const { channel_id, embed_channel_id } = sanctionConfigRows[0];
-      if (message.channel.id === channel_id) {
-        const regex =
-          /^Pseudo\s*:\s*(.+)\nRaison\s*:\s*(.+)\nSanction\s*:\s*(.+)$/i;
-        const match = message.content.match(regex);
-        if (match) {
-          const pseudo = match[1].trim();
-          const raison = match[2].trim();
-          const sanctionRaw = match[3].trim();
+    const regex =
+      /^Pseudo\s*:\s*(.+)\nRaison\s*:\s*(.+)\nSanction\s*:\s*(.+)$/i;
+    const match = message.content.match(regex);
+    if (!match) return;
 
-          let duration = "";
-          const durRegex = /^(\d+)\s*([JMA])$/i;
+    const pseudo = match[1].trim();
+    const raison = match[2].trim();
+    const sanctionRaw = match[3].trim();
 
-          if (/^warn$/i.test(sanctionRaw)) {
-            duration = "Warn";
-          } else if (/^kick$/i.test(sanctionRaw)) {
-            duration = "Kick";
-          } else if (durRegex.test(sanctionRaw)) {
-            const parts = sanctionRaw.match(durRegex);
-            const nombre = parts[1];
-            const uniteLetter = parts[2].toUpperCase();
-            let unite;
-            if (uniteLetter === "J") unite = "jour(s)";
-            else if (uniteLetter === "M") unite = "mois";
-            else if (uniteLetter === "A") unite = "an(s)";
-            duration = `${nombre} ${unite}`;
-          } else if (/^(perm|permanent)$/i.test(sanctionRaw)) {
-            duration = "Permanent";
-          } else {
-            return;
-          }
+    let duration = "";
+    const durRegex = /^(\d+)\s*([JMA])$/i;
+    if (/^warn$/i.test(sanctionRaw)) {
+      duration = "Warn";
+    } else if (/^kick$/i.test(sanctionRaw)) {
+      duration = "Kick";
+    } else if (durRegex.test(sanctionRaw)) {
+      const parts = sanctionRaw.match(durRegex);
+      const nombre = parts[1];
+      const uniteLetter = parts[2].toUpperCase();
+      let unite;
+      if (uniteLetter === "J") unite = "jour(s)";
+      else if (uniteLetter === "M") unite = "mois";
+      else if (uniteLetter === "A") unite = "an(s)";
+      duration = `${nombre} ${unite}`;
+    } else if (/^(perm|permanent)$/i.test(sanctionRaw)) {
+      duration = "Permanent";
+    } else {
+      return;
+    }
 
-          await db.execute(
-            "INSERT INTO sanctions (guild_id, punisher_id, pseudo, raison, duration) VALUES (?, ?, ?, ?, ?)",
-            [guildId, message.author.id, pseudo, raison, duration]
-          );
+    await db.execute(
+      "INSERT INTO sanctions (guild_id, punisher_id, pseudo, raison, duration) VALUES (?, ?, ?, ?, ?)",
+      [guildId, message.author.id, pseudo, raison, duration]
+    );
 
-          const embed = new EmbedBuilder()
-            .setTitle("Sanction enregistrée")
-            .addFields(
-              { name: "Pseudo", value: pseudo, inline: true },
-              { name: "Raison", value: raison, inline: true },
-              { name: "Sanction", value: duration, inline: true },
-              {
-                name: "Sanctionné par",
-                value: `<@${message.author.id}>`,
-                inline: true,
-              }
-            )
-            .setColor(0xff0000)
-            .setTimestamp();
+    const { EmbedBuilder } = require("discord.js");
+    const embed = new EmbedBuilder()
+      .setTitle("Sanction enregistrée")
+      .addFields(
+        { name: "Pseudo", value: pseudo, inline: true },
+        { name: "Raison", value: raison, inline: true },
+        { name: "Sanction", value: duration, inline: true },
+        { name: "Sanctionné par", value: `<@${message.author.id}>`, inline: true }
+      )
+      .setColor(0xff0000)
+      .setTimestamp();
 
-          const sanctionEmbedChannel =
-            message.guild.channels.cache.get(embed_channel_id);
-          if (sanctionEmbedChannel) {
-            sanctionEmbedChannel.send({ embeds: [embed] });
-          }
-        }
-      }
+    const embedChannel = await message.guild.channels.fetch(
+      sanctionConfigRows[0].embed_channel_id
+    );
+    if (embedChannel) {
+      embedChannel.send({ embeds: [embed] });
     }
   } catch (err) {
     console.error("Erreur lors du traitement des sanctions :", err);
