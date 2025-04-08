@@ -1,6 +1,22 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const db = require("../db");
 
+function convertToDisplayDate(sqlDate) {
+    if (sqlDate instanceof Date) {
+        const day = String(sqlDate.getDate()).padStart(2, "0");
+        const month = String(sqlDate.getMonth() + 1).padStart(2, "0");
+        const year = sqlDate.getFullYear();
+        return `${day}/${month}/${year}`;
+    }
+    if (typeof sqlDate === "string") {
+        const parts = sqlDate.split("-");
+        if (parts.length === 3) {
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+    }
+    return String(sqlDate);
+}
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("removeabsence")
@@ -23,43 +39,26 @@ module.exports = {
 
         try {
             const [configRows] = await db.execute(
-                "SELECT is_enabled, announcement_channel_id FROM absence_config WHERE guild_id = ?",
+                "SELECT announcement_channel_id FROM absence_config WHERE guild_id = ?",
                 [interaction.guild.id]
             );
-            if (!configRows.length || !configRows[0].is_enabled) {
-                return interaction.editReply("❌ Le système d'absence n'est pas activé sur ce serveur.");
-            }
-            const announcementChannelId = configRows[0].announcement_channel_id;
-            const announcementChannel = interaction.guild.channels.cache.get(announcementChannelId);
-            if (!announcementChannel) {
-                return interaction.editReply("❌ Channel d'annonce introuvable.");
+            let announcementChannel = null;
+            if (configRows.length) {
+                const announcementChannelId = configRows[0].announcement_channel_id;
+                announcementChannel = interaction.guild.channels.cache.get(announcementChannelId);
             }
 
-            const [rows] = await db.execute(
+            const [absenceRows] = await db.execute(
                 "SELECT * FROM absences WHERE id = ? AND guild_id = ?",
                 [absenceId, interaction.guild.id]
             );
-            if (!rows.length) {
-                return interaction.editReply(`❌ Aucune absence trouvée avec l'ID ${absenceId}.`);
+            if (!absenceRows.length) {
+                return interaction.editReply("❌ Aucune absence trouvée avec cet ID.");
             }
-            const absence = rows[0];
+            const absence = absenceRows[0];
 
             if (absence.user_id !== interaction.user.id) {
                 return interaction.editReply("❌ Vous ne pouvez supprimer que vos propres absences.");
-            }
-
-            function convertToDisplayDate(sqlDate) {
-                let dateStr;
-                if (typeof sqlDate === "string") {
-                    dateStr = sqlDate;
-                } else if (sqlDate instanceof Date) {
-                    dateStr = sqlDate.toISOString().split("T")[0];
-                } else {
-                    dateStr = String(sqlDate);
-                }
-                const parts = dateStr.split("-");
-                if (parts.length !== 3) return sqlDate;
-                return `${parts[2]}/${parts[1]}/${parts[0]}`;
             }
 
             const dateDebutDisplay = convertToDisplayDate(absence.date_debut);
@@ -78,17 +77,19 @@ module.exports = {
                     { name: "Date de début", value: dateDebutDisplay, inline: true },
                     { name: "Date de fin", value: dateFinDisplay, inline: true }
                 )
-                .setFooter({ text: `ID de l'absence supprimée: ${absenceId}` })
+                .setFooter({ text: `ID de l'absence supprimée : ${absenceId}` })
                 .setTimestamp();
 
-            await announcementChannel.send({ embeds: [embed] });
+            if (announcementChannel) {
+                await announcementChannel.send({ embeds: [embed] });
+            } else {
+                console.error("Le salon d'annonce est introuvable.");
+            }
 
             return interaction.editReply(`✅ Votre absence (ID: ${absenceId}) a bien été supprimée.`);
         } catch (error) {
             console.error("Erreur lors de la suppression de l'absence :", error);
-            if (!interaction.replied) {
-                return interaction.editReply("❌ Une erreur s'est produite lors de la suppression de l'absence.");
-            }
+            return interaction.editReply("❌ Une erreur s'est produite lors de la suppression de l'absence.");
         }
     },
 };
