@@ -59,7 +59,7 @@ module.exports = {
             sanctions.forEach(sanction => {
                 embed.addFields({
                     name: `Le ${new Date(sanction.created_at).toLocaleDateString()}`,
-                    value: `**Sanctionné par :** <@${sanction.punisher_id}>\n**Raison :** ${sanction.raison}\n**Durée :** ${sanction.duration}\n**Serveur :** ${sanction.guild_id}`,
+                    value: `**\nSanctionné par :** <@${sanction.punisher_id}>\n**Raison :** ${sanction.raison}\n**Durée :** ${sanction.duration}\n**Serveur :** ${sanction.guild_id}\n\n`,
                     inline: false
                 });
             });

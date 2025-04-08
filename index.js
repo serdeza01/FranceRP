@@ -1,3 +1,11 @@
+require("dotenv").config();
+
+const express = require("express");
+const session = require("express-session");
+const cookieParser = require("cookie-parser");
+const cors = require("cors");
+const https = require("https");
+const schedule = require("node-schedule");
 const {
   Client,
   GatewayIntentBits,
@@ -6,9 +14,9 @@ const {
   EmbedBuilder,
   ActivityType,
 } = require("discord.js");
+
 const fs = require("fs");
 const path = require("path");
-require("dotenv").config();
 const axios = require("axios");
 
 const { sendTicketPanel } = require("./ticketPanel");
@@ -16,10 +24,163 @@ const {
   updatePresenceEmbed,
   buildPresenceEmbed,
 } = require("./commands/presence");
-
 const db = require("./db");
 global.database = db;
 
+const app = express();
+const PORT = process.env.API_PORT || 8080;
+/*
+app.use(express.json());
+app.use(cookieParser());
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production",
+    },
+  })
+);
+
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "PATCH", "DELETE"],
+  })
+);
+
+app.get("/auth", (req, res) => {
+  if (req.session && req.session.accessToken) {
+    res.json({ accessToken: req.session.accessToken });
+  } else {
+    res.status(401).json({ error: "Not authenticated" });
+  }
+});
+
+app.post("/auth/signout", (req, res) => {
+  req.session.destroy((err) => {
+    if (err) return res.status(500).json({ error: "Signout failed" });
+    res.json({ message: "Signed out" });
+  });
+});
+
+const getGuild = async (guildId) => {
+  let guild = client.guilds.cache.get(guildId);
+  if (!guild) {
+    try {
+      guild = await client.guilds.fetch(guildId);
+    } catch (err) {
+      throw new Error("Guild not found");
+    }
+  }
+  return guild;
+};
+
+const guildFeatures = {};
+
+const httpsOptions = {
+  key: fs.readFileSync("./key.pem"),
+  cert: fs.readFileSync("./cert.pem"),
+};
+
+app.get("/guilds/:guild", async (req, res) => {
+  const guildId = req.params.guild;
+  try {
+    const guild = await getGuild(guildId);
+    const guildInfo = {
+      id: guild.id,
+      name: guild.name,
+      icon: guild.iconURL({ dynamic: true }),
+      memberCount: guild.memberCount,
+    };
+    res.json(guildInfo);
+  } catch (error) {
+    res.status(404).json({ error: "Guild not found" });
+  }
+});
+
+app.get("/guilds/:guild/features/:feature", (req, res) => {
+  const { guild, feature } = req.params;
+  const featuresConfig = guildFeatures[guild] || {};
+  if (featuresConfig[feature]) {
+    res.json(featuresConfig[feature]);
+  } else {
+    res.status(404).json({ error: "Feature not enabled or not found" });
+  }
+});
+
+app.patch("/guilds/:guild/features/:feature", (req, res) => {
+  const { guild, feature } = req.params;
+  const options = req.body;
+  if (!guildFeatures[guild] || !guildFeatures[guild][feature]) {
+    return res.status(404).json({ error: "Feature not enabled" });
+  }
+  guildFeatures[guild][feature].options = {
+    ...guildFeatures[guild][feature].options,
+    ...options,
+  };
+  res.json(guildFeatures[guild][feature]);
+});
+
+app.post("/guilds/:guild/features/:feature", (req, res) => {
+  const { guild, feature } = req.params;
+  const options = req.body || {};
+  if (!guildFeatures[guild]) {
+    guildFeatures[guild] = {};
+  }
+  guildFeatures[guild][feature] = {
+    enabled: true,
+    options: options,
+  };
+  res.json(guildFeatures[guild][feature]);
+});
+
+app.delete("/guilds/:guild/features/:feature", (req, res) => {
+  const { guild, feature } = req.params;
+  if (guildFeatures[guild] && guildFeatures[guild][feature]) {
+    delete guildFeatures[guild][feature];
+    res.json({ message: "Feature disabled" });
+  } else {
+    res.status(404).json({ error: "Feature not enabled" });
+  }
+});
+
+app.get("/guilds/:guild/roles", async (req, res) => {
+  const guildId = req.params.guild;
+  try {
+    const guild = await getGuild(guildId);
+    const roles = guild.roles.cache.map((r) => ({
+      id: r.id,
+      name: r.name,
+      color: r.color,
+      permissions: r.permissions.serialize(),
+    }));
+    res.json(roles);
+  } catch (error) {
+    res.status(404).json({ error: "Guild not found" });
+  }
+});
+
+app.get("/guilds/:guild/channels", async (req, res) => {
+  const guildId = req.params.guild;
+  try {
+    const guild = await getGuild(guildId);
+    const channels = guild.channels.cache.map((c) => ({
+      id: c.id,
+      name: c.name,
+      type: c.type,
+    }));
+    res.json(channels);
+  } catch (error) {
+    res.status(404).json({ error: "Guild not found" });
+  }
+});
+
+https.createServer(httpsOptions, app).listen(PORT, () => {
+  console.log(`Serveur HTTPS lancé sur le port ${PORT}`);
+});
+*/
 async function initDatabase() {
   try {
     await db.execute(
@@ -190,7 +351,8 @@ client.once("ready", async () => {
 
   try {
     await client.application.commands.set(
-      client.commands.map((command) => command.data)
+      client.commands.map((command) => command.data),
+      "871053612971864064"
     );
     console.log("Commandes enregistrées globalement !");
   } catch (error) {
@@ -255,6 +417,65 @@ client.once("ready", async () => {
   }
 
   await sendTicketPanel(client);
+
+  async function sendStaffPresenceReminderDM() {
+    try {
+      const [configRows] = await db.execute(
+        "SELECT guild_id FROM dm_config WHERE type = 'staff_presence' AND active = TRUE"
+      );
+
+      if (configRows.length === 0) {
+        return;
+      }
+
+      for (const config of configRows) {
+        try {
+          const guild = await client.guilds.fetch(config.guild_id).catch(() => null);
+          if (!guild) continue;
+
+          const [staffRows] = await db.execute(
+            "SELECT user_id FROM staff_presence WHERE guild_id = ? AND present = TRUE",
+            [config.guild_id]
+          );
+
+          if (staffRows.length === 0) continue;
+
+          for (const staff of staffRows) {
+            try {
+              const user = await client.users.fetch(staff.user_id);
+              if (user) {
+                await user.send(
+                  `Attention ! Sur le serveur **${guild.name}**, n'oublie pas d'enlever ta présence en tant que staff ! Utilise la commande \`/presence\` pour mettre à jour ton statut.`
+                );
+              }
+            } catch (err) {
+              console.error(
+                `Impossible d'envoyer un DM à l'utilisateur ${staff.user_id} pour le serveur ${guild.name} :`,
+                err
+              );
+            }
+          }
+        } catch (guildError) {
+          console.error(
+            `Erreur lors du traitement du serveur avec l'ID ${config.guild_id} :`,
+            guildError
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Erreur lors de l'envoi des rappels DM :", error);
+    }
+  }
+  schedule.scheduleJob({ hour: 1, minute: 0, tz: "Europe/Paris" }, () => {
+    console.log("Lancement de l'envoi des rappels DM de présence staff à 1h00.");
+    sendStaffPresenceReminderDM();
+  });
+
+  schedule.scheduleJob({ hour: 8, minute: 30, tz: "Europe/Paris" }, () => {
+    console.log("Lancement de l'envoi des rappels DM de présence staff à 8h30.");
+    sendStaffPresenceReminderDM();
+  });
+
 });
 
 client.on("messageCreate", async (message) => {
@@ -302,10 +523,7 @@ client.on("messageCreate", async (message) => {
             await message.channel.bulkDelete(messagesToDelete, true);
           }
         } catch (err) {
-          console.error(
-            "Erreur lors de la suppression des messages spam :",
-            err
-          );
+          console.error("Erreur lors de la suppression des messages spam :", err);
         }
 
         try {
@@ -349,9 +567,7 @@ client.on("messageCreate", async (message) => {
                     `Vous avez été **kick** du serveur \`${message.guild.name}\` pour spam excessif (3 warns atteints).`
                   );
                 } catch (err) {
-                  console.error(
-                    "Impossible d'envoyer un DM à l'utilisateur kick."
-                  );
+                  console.error("Impossible d'envoyer un DM à l'utilisateur kick.");
                 }
                 message.channel.send(
                   `<@${discordId}> a été **kick** pour spam (3 warns).`
@@ -372,9 +588,7 @@ client.on("messageCreate", async (message) => {
                     `Vous avez été **banni** du serveur \`${message.guild.name}\` pour spam excessif (3 warns et 2 kicks accumulés).`
                   );
                 } catch (err) {
-                  console.error(
-                    "Impossible d'envoyer un DM à l'utilisateur banni."
-                  );
+                  console.error("Impossible d'envoyer un DM à l'utilisateur banni.");
                 }
                 message.channel.send(
                   `<@${discordId}> a été **banni** pour spam excessif.`
@@ -391,10 +605,7 @@ client.on("messageCreate", async (message) => {
       }
     }
   } catch (err) {
-    console.error(
-      "Erreur lors de la lecture de la configuration anti-spam :",
-      err
-    );
+    console.error("Erreur lors de la lecture de la configuration anti-spam :", err);
   }
 
   if (!global.lastMessageTimestamps) global.lastMessageTimestamps = {};
@@ -443,7 +654,6 @@ client.on("messageCreate", async (message) => {
         }
 
         if (announce) {
-          const { EmbedBuilder } = require("discord.js");
           const embed = new EmbedBuilder()
             .setTitle("Nouveau Niveau Atteint !")
             .setDescription(
@@ -463,72 +673,68 @@ client.on("messageCreate", async (message) => {
   } catch (err) {
     console.error("Erreur dans le système d'XP :", err);
   }
+
   try {
     const [sanctionConfigRows] = await db.execute(
-      "SELECT channel_id, embed_channel_id FROM sanction_config WHERE guild_id = ?",
+      "SELECT channel_ids, embed_channel_id FROM sanction_config WHERE guild_id = ?",
       [guildId]
     );
+    if (sanctionConfigRows.length === 0) return;
+    const channelIds = JSON.parse(sanctionConfigRows[0].channel_ids);
+    if (!channelIds.includes(message.channel.id)) return;
 
-    if (sanctionConfigRows.length) {
-      const { channel_id, embed_channel_id } = sanctionConfigRows[0];
-      if (message.channel.id === channel_id) {
-        const regex =
-          /^Pseudo\s*:\s*(.+)\nRaison\s*:\s*(.+)\nSanction\s*:\s*(.+)$/i;
-        const match = message.content.match(regex);
-        if (match) {
-          const pseudo = match[1].trim();
-          const raison = match[2].trim();
-          const sanctionRaw = match[3].trim();
+    const regex =
+      /^Pseudo\s*:\s*(.+)\nRaison\s*:\s*(.+)\nSanction\s*:\s*(.+)$/i;
+    const match = message.content.match(regex);
+    if (!match) return;
 
-          let duration = "";
-          const durRegex = /^(\d+)\s*([JMA])$/i;
+    const pseudo = match[1].trim();
+    const raison = match[2].trim();
+    const sanctionRaw = match[3].trim();
 
-          if (/^warn$/i.test(sanctionRaw)) {
-            duration = "Warn";
-          } else if (/^kick$/i.test(sanctionRaw)) {
-            duration = "Kick";
-          } else if (durRegex.test(sanctionRaw)) {
-            const parts = sanctionRaw.match(durRegex);
-            const nombre = parts[1];
-            const uniteLetter = parts[2].toUpperCase();
-            let unite;
-            if (uniteLetter === "J") unite = "jour(s)";
-            else if (uniteLetter === "M") unite = "mois";
-            else if (uniteLetter === "A") unite = "an(s)";
-            duration = `${nombre} ${unite}`;
-          } else if (/^(perm|permanent)$/i.test(sanctionRaw)) {
-            duration = "Permanent";
-          } else {
-            return;
-          }
+    let duration = "";
+    const durRegex = /^(\d+)\s*([JMA])$/i;
+    if (/^warn$/i.test(sanctionRaw)) {
+      duration = "Warn";
+    } else if (/^kick$/i.test(sanctionRaw)) {
+      duration = "Kick";
+    } else if (durRegex.test(sanctionRaw)) {
+      const parts = sanctionRaw.match(durRegex);
+      const nombre = parts[1];
+      const uniteLetter = parts[2].toUpperCase();
+      let unite;
+      if (uniteLetter === "J") unite = "jour(s)";
+      else if (uniteLetter === "M") unite = "mois";
+      else if (uniteLetter === "A") unite = "an(s)";
+      duration = `${nombre} ${unite}`;
+    } else if (/^(perm|permanent)$/i.test(sanctionRaw)) {
+      duration = "Permanent";
+    } else {
+      return;
+    }
 
-          await db.execute(
-            "INSERT INTO sanctions (guild_id, punisher_id, pseudo, raison, duration) VALUES (?, ?, ?, ?, ?)",
-            [guildId, message.author.id, pseudo, raison, duration]
-          );
+    await db.execute(
+      "INSERT INTO sanctions (guild_id, punisher_id, pseudo, raison, duration) VALUES (?, ?, ?, ?, ?)",
+      [guildId, message.author.id, pseudo, raison, duration]
+    );
 
-          const embed = new EmbedBuilder()
-            .setTitle("Sanction enregistrée")
-            .addFields(
-              { name: "Pseudo", value: pseudo, inline: true },
-              { name: "Raison", value: raison, inline: true },
-              { name: "Sanction", value: duration, inline: true },
-              {
-                name: "Sanctionné par",
-                value: `<@${message.author.id}>`,
-                inline: true,
-              }
-            )
-            .setColor(0xff0000)
-            .setTimestamp();
+    const { EmbedBuilder } = require("discord.js");
+    const embed = new EmbedBuilder()
+      .setTitle("Sanction enregistrée")
+      .addFields(
+        { name: "Pseudo", value: pseudo, inline: true },
+        { name: "Raison", value: raison, inline: true },
+        { name: "Sanction", value: duration, inline: true },
+        { name: "Sanctionné par", value: `<@${message.author.id}>`, inline: true }
+      )
+      .setColor(0xff0000)
+      .setTimestamp();
 
-          const sanctionEmbedChannel =
-            message.guild.channels.cache.get(embed_channel_id);
-          if (sanctionEmbedChannel) {
-            sanctionEmbedChannel.send({ embeds: [embed] });
-          }
-        }
-      }
+    const embedChannel = await message.guild.channels.fetch(
+      sanctionConfigRows[0].embed_channel_id
+    );
+    if (embedChannel) {
+      embedChannel.send({ embeds: [embed] });
     }
   } catch (err) {
     console.error("Erreur lors du traitement des sanctions :", err);
@@ -539,7 +745,6 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.isCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
-
     try {
       const context = {
         STAFF_ROLE_ID,
@@ -551,7 +756,6 @@ client.on("interactionCreate", async (interaction) => {
         updatePresenceEmbed: updatePresenceEmbedMessage,
         CHANNEL_ID,
       };
-
       await command.execute(interaction, client, context);
     } catch (error) {
       console.error(error);
@@ -564,14 +768,12 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.customId === "connectRobloxModal") {
       const username = interaction.fields.getTextInputValue("roblox_username");
       const discordId = interaction.user.id;
-
       try {
         const response = await axios.get(
           `https://api.roblox.com/users/get-by-username?username=${encodeURIComponent(
             username
           )}`
         );
-
         if (!response.data || response.data.Id === 0) {
           return interaction.reply({
             content:
@@ -579,7 +781,6 @@ client.on("interactionCreate", async (interaction) => {
             flags: 1 << 6,
           });
         }
-
         const robloxId = response.data.Id;
         await db.promise().execute(
           `
@@ -591,7 +792,6 @@ client.on("interactionCreate", async (interaction) => {
         `,
           [discordId, username, robloxId]
         );
-
         await interaction.reply({
           content: `Ton compte Roblox **${username}** (ID: ${robloxId}) a été associé à ton compte Discord !`,
           flags: 1 << 6,
