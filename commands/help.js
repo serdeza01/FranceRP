@@ -45,6 +45,7 @@ module.exports = {
 **/setup-sanctioneh** - Setup le système de sanction
 **/setup-dm** - Setup le système de message privé
 **/setup-sanction-channels** - Permet d'ajouter ou retirer un channel/thread pour vérifier les sanctions
+**/setup-absence** - Permet d'ajouter ou retirer le système d'absence pour le staff
 
 **Les autres commandes :**
 
@@ -62,6 +63,8 @@ module.exports = {
 **/rename** - Permet de renommer un ticket
 **/giveaway** - Permet de créer un giveaway
 **/link [guildId]** - Permet de relier 2 serveur pour partager l'historique des sanctions
+**/addabsence** - Permet d'ajouter une absence
+**/removeabsence** - Permet de retirer une absence
       `)
       .setColor("#00ff00")
       .setFooter({ text: "Made by serdeza" })

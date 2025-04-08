@@ -351,7 +351,8 @@ client.once("ready", async () => {
 
   try {
     await client.application.commands.set(
-      client.commands.map((command) => command.data)
+      client.commands.map((command) => command.data),
+      "871053612971864064"
     );
     console.log("Commandes enregistrées globalement !");
   } catch (error) {
@@ -522,10 +523,7 @@ client.on("messageCreate", async (message) => {
             await message.channel.bulkDelete(messagesToDelete, true);
           }
         } catch (err) {
-          console.error(
-            "Erreur lors de la suppression des messages spam :",
-            err
-          );
+          console.error("Erreur lors de la suppression des messages spam :", err);
         }
 
         try {
@@ -569,9 +567,7 @@ client.on("messageCreate", async (message) => {
                     `Vous avez été **kick** du serveur \`${message.guild.name}\` pour spam excessif (3 warns atteints).`
                   );
                 } catch (err) {
-                  console.error(
-                    "Impossible d'envoyer un DM à l'utilisateur kick."
-                  );
+                  console.error("Impossible d'envoyer un DM à l'utilisateur kick.");
                 }
                 message.channel.send(
                   `<@${discordId}> a été **kick** pour spam (3 warns).`
@@ -592,9 +588,7 @@ client.on("messageCreate", async (message) => {
                     `Vous avez été **banni** du serveur \`${message.guild.name}\` pour spam excessif (3 warns et 2 kicks accumulés).`
                   );
                 } catch (err) {
-                  console.error(
-                    "Impossible d'envoyer un DM à l'utilisateur banni."
-                  );
+                  console.error("Impossible d'envoyer un DM à l'utilisateur banni.");
                 }
                 message.channel.send(
                   `<@${discordId}> a été **banni** pour spam excessif.`
@@ -611,10 +605,7 @@ client.on("messageCreate", async (message) => {
       }
     }
   } catch (err) {
-    console.error(
-      "Erreur lors de la lecture de la configuration anti-spam :",
-      err
-    );
+    console.error("Erreur lors de la lecture de la configuration anti-spam :", err);
   }
 
   if (!global.lastMessageTimestamps) global.lastMessageTimestamps = {};
@@ -682,10 +673,11 @@ client.on("messageCreate", async (message) => {
   } catch (err) {
     console.error("Erreur dans le système d'XP :", err);
   }
+
   try {
     const [rows] = await db.execute(
       "SELECT channel_id FROM sanction_watch_channels WHERE guild_id = ? AND channel_id = ?",
-      [guildId, channelId]
+      [guildId, message.channel.id]
     );
     if (rows.length === 0) {
       return;
