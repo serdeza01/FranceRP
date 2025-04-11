@@ -352,7 +352,7 @@ client.once("ready", async () => {
   try {
     await client.application.commands.set(
       client.commands.map((command) => command.data),
-      "871053612971864064"
+      //"871053612971864064"
     );
     console.log("Commandes enregistrées globalement !");
   } catch (error) {
