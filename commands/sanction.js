@@ -32,6 +32,7 @@ module.exports = {
             if (!interaction.member.roles.cache.has(allowedRoleId)) {
                 return interaction.reply({ content: "❌ Vous n'avez pas le rôle requis pour effectuer cette commande.", ephemeral: true });
             }
+
             let guildIds = [guildId];
             const [linkedRows] = await db.execute("SELECT guild_id1, guild_id2 FROM linked_servers WHERE guild_id1 = ? OR guild_id2 = ?", [guildId, guildId]);
             for (const row of linkedRows) {
@@ -41,9 +42,9 @@ module.exports = {
 
             const [sanctions] = await db.execute(
                 `SELECT guild_id, punisher_id, pseudo, raison, duration, created_at 
-         FROM sanctions 
-         WHERE pseudo = ? AND guild_id IN (${guildIds.map(() => '?').join(',')}) 
-         ORDER BY created_at DESC`,
+                 FROM sanctions 
+                 WHERE pseudo = ? AND guild_id IN (${guildIds.map(() => '?').join(',')}) 
+                 ORDER BY created_at DESC`,
                 [pseudoRecherche, ...guildIds]
             );
 
@@ -57,8 +58,14 @@ module.exports = {
                 .setTimestamp();
 
             sanctions.forEach(sanction => {
+                const date = new Date(sanction.created_at);
+                const day = date.getDate().toString().padStart(2, '0');
+                const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                const year = date.getFullYear();
+                const formattedDate = `${day}/${month}/${year}`;
+
                 embed.addFields({
-                    name: `Le ${new Date(sanction.created_at).toLocaleDateString()}`,
+                    name: `Le ${formattedDate}`,
                     value: `**\nSanctionné par :** <@${sanction.punisher_id}>\n**Raison :** ${sanction.raison}\n**Durée :** ${sanction.duration}\n**Serveur :** ${sanction.guild_id}\n\n`,
                     inline: false
                 });
