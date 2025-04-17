@@ -619,11 +619,12 @@ client.on("messageCreate", async (message) => {
   global.lastMessageTimestamps[xpKey] = now;
 
   const xpEarned = Math.max(1, Math.floor(message.content.length / 10));
+
   try {
     await db.execute(
       `INSERT INTO user_levels (guild_id, discord_id, xp, level)
-       VALUES (?, ?, ?, 1)
-       ON DUPLICATE KEY UPDATE xp = xp + ?`,
+     VALUES (?, ?, ?, 1)
+     ON DUPLICATE KEY UPDATE xp = xp + ?`,
       [guildId, discordId, xpEarned, xpEarned]
     );
 
@@ -631,43 +632,48 @@ client.on("messageCreate", async (message) => {
       "SELECT xp, level FROM user_levels WHERE guild_id = ? AND discord_id = ?",
       [guildId, discordId]
     );
+
     if (rows.length > 0) {
       let { xp, level } = rows[0];
-      const xpThreshold = level * 100;
 
-      if (xp >= xpThreshold) {
+      let xpThreshold = Math.floor(13.3 * Math.pow(level, 2));
+      let leveledUp = false;
+
+      while (xp >= xpThreshold) {
+        xp -= xpThreshold;
         level++;
-        await db.execute(
-          "UPDATE user_levels SET level = ? WHERE guild_id = ? AND discord_id = ?",
-          [level, guildId, discordId]
-        );
+        leveledUp = true;
+        xpThreshold = Math.floor(13.3 * Math.pow(level, 2));
+      }
 
-        const [configRows] = await db.execute(
-          "SELECT system_enabled, announce_enabled, announce_channel FROM level_config WHERE guild_id = ?",
-          [guildId]
-        );
-        let announce = false;
-        let announceChannelId = null;
-        if (configRows.length > 0 && configRows[0].system_enabled) {
-          announce = configRows[0].announce_enabled;
-          announceChannelId = configRows[0].announce_channel;
-        }
+      await db.execute(
+        "UPDATE user_levels SET xp = ?, level = ? WHERE guild_id = ? AND discord_id = ?",
+        [xp, level, guildId, discordId]
+      );
 
-        if (announce) {
-          const embed = new EmbedBuilder()
-            .setTitle("Nouveau Niveau Atteint !")
-            .setDescription(
-              `<@${discordId}> vient d'atteindre le niveau **${level}** !`
-            )
-            .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
-            .setColor("#00FF00")
-            .setTimestamp();
+      const [configRows] = await db.execute(
+        "SELECT system_enabled, announce_enabled, announce_channel FROM level_config WHERE guild_id = ?",
+        [guildId]
+      );
 
-          let channel =
-            message.guild.channels.cache.get(announceChannelId) ||
-            message.channel;
-          channel.send({ embeds: [embed] });
-        }
+      let announce = false;
+      let announceChannelId = null;
+      if (configRows.length > 0 && configRows[0].system_enabled) {
+        announce = configRows[0].announce_enabled;
+        announceChannelId = configRows[0].announce_channel;
+      }
+
+      if (announce && leveledUp) {
+        const embed = new EmbedBuilder()
+          .setTitle("Nouveau Niveau Atteint !")
+          .setDescription(`<@${discordId}> vient d'atteindre le niveau **${level}** !`)
+          .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
+          .setColor("#00FF00")
+          .setTimestamp();
+
+        let channel =
+          message.guild.channels.cache.get(announceChannelId) || message.channel;
+        channel.send({ embeds: [embed] });
       }
     }
   } catch (err) {
@@ -750,13 +756,21 @@ client.on("interactionCreate", async (interaction) => {
         STAFF_ROLE_ID,
         ticketAuthorizedRoles: global.ticketAuthorizedRoles,
         ticketAuthorizedUsers: global.ticketAuthorizedUsers,
-        updateTicketEmbed: () =>
-          updateTicketEmbed(interaction.guild, interaction.channelId),
+        updateTicketEmbed: () => updateTicketEmbed(interaction.guild, interaction.channelId),
         staffStatus: global.staffStatus,
         updatePresenceEmbed: updatePresenceEmbedMessage,
         CHANNEL_ID,
       };
+
       await command.execute(interaction, client, context);
+
+      if (!interaction.alreadyLogged) {
+        const { logCommandUsage } = require("./logSystem");
+        await logCommandUsage(client, interaction, {
+          affected: interaction.channel ? interaction.channel.name : "MP",
+        });
+        interaction.alreadyLogged = true;
+      }
     } catch (error) {
       console.error(error);
       await interaction.reply({
