@@ -750,13 +750,21 @@ client.on("interactionCreate", async (interaction) => {
         STAFF_ROLE_ID,
         ticketAuthorizedRoles: global.ticketAuthorizedRoles,
         ticketAuthorizedUsers: global.ticketAuthorizedUsers,
-        updateTicketEmbed: () =>
-          updateTicketEmbed(interaction.guild, interaction.channelId),
+        updateTicketEmbed: () => updateTicketEmbed(interaction.guild, interaction.channelId),
         staffStatus: global.staffStatus,
         updatePresenceEmbed: updatePresenceEmbedMessage,
         CHANNEL_ID,
       };
+
       await command.execute(interaction, client, context);
+
+      if (!interaction.alreadyLogged) {
+        const { logCommandUsage } = require("./logSystem");
+        await logCommandUsage(client, interaction, {
+          affected: interaction.channel ? interaction.channel.name : "MP",
+        });
+        interaction.alreadyLogged = true;
+      }
     } catch (error) {
       console.error(error);
       await interaction.reply({
