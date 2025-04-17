@@ -337,7 +337,6 @@ client.once("ready", async () => {
         ],
         status: "online",
       });
-      console.log("Présence mise à jour");
     } catch (err) {
       console.error("Erreur lors de la mise à jour du statut :", err);
     }
