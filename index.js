@@ -327,8 +327,6 @@ client.once("ready", async () => {
       (acc, guild) => acc + guild.memberCount,
       0
     );
-    console.log(`Mise à jour du statut : ${totalMembers} membres.`);
-
     try {
       client.user.setPresence({
         activities: [
