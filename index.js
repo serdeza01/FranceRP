@@ -27,8 +27,20 @@ const {
 const db = require("./db");
 global.database = db;
 
-const app = express();
 const PORT = process.env.API_PORT || 8080;
+
+const app = express();
+const port = process.env.HEALTH_PORT || 3000;
+
+app.get("/health", (req, res) => {
+res.status(200).send("OK");
+});
+
+app.listen(port, () => {
+console.log(`Health endpoint listening on port ${port}`);
+});
+
+
 /*
 app.use(express.json());
 app.use(cookieParser());
