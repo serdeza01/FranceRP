@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const db = require("../../db");
+const db = require("../db");
 
 function convertToDisplayDate(sqlDate) {
     if (sqlDate instanceof Date) {
