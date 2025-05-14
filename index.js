@@ -23,7 +23,7 @@ const { sendTicketPanel } = require("./ticketPanel");
 const {
   updatePresenceEmbed,
   buildPresenceEmbed,
-} = require("./commands/presence");
+} = require("./commands/moderation/presence");
 const db = require("./db");
 global.database = db;
 
@@ -33,11 +33,11 @@ const app = express();
 const port = process.env.HEALTH_PORT || 3000;
 
 app.get("/health", (req, res) => {
-res.status(200).send("OK");
+  res.status(200).send("OK");
 });
 
 app.listen(port, () => {
-console.log(`Health endpoint listening on port ${port}`);
+  console.log(`Health endpoint listening on port ${port}`);
 });
 
 
@@ -230,21 +230,40 @@ process.on("uncaughtException", (err) => {
 });
 
 client.commands = new Collection();
-const commandsPath = path.join(__dirname, "commands");
-const commandFiles = fs
-  .readdirSync(commandsPath)
-  .filter((file) => file.endsWith(".js"));
 
-for (const file of commandFiles) {
-  const command = require(path.join(commandsPath, file));
-  if (!command.data || !command.data.name) {
-    console.warn(
-      `Le fichier ${file} ne possède pas de propriété data.name. Commande ignorée.`
-    );
-    continue;
+const commandsPath = path.join(__dirname, "commands");
+
+/**
+ * Parcourt récursivement un dossier à la recherche de fichiers .js
+ * et charge chaque commande dans client.commands.
+ * @param {string} dir Le chemin du dossier à scanner
+ */
+function loadCommands(dir) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      loadCommands(fullPath);
+    } else if (entry.isFile() && entry.name.endsWith(".js")) {
+      const command = require(fullPath);
+
+      if (!command.data || !command.data.name) {
+        console.warn(
+          `[WARNING] Le fichier ${fullPath} n’a pas de propriété data.name, commande ignorée.`
+        );
+        continue;
+      }
+
+      client.commands.set(command.data.name, command);
+    }
   }
-  client.commands.set(command.data.name, command);
 }
+
+loadCommands(commandsPath);
+
+console.log(`✅  ${client.commands.size} commandes chargées.`);
 
 global.staffStatus = new Map();
 global.lastMessageId = null;
