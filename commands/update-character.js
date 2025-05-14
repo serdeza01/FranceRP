@@ -1,115 +1,68 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
+const { SlashCommandBuilder } = require("discord.js");
 const db = require("../db");
+const getLinkedGuildIds = require("../getLinkedGuildIds");
+
+const ALLOWED_ROLES = [
+    "1313029840328327248",
+    "1304151263851708458",
+    "962270129511604224",
+];
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("update-character")
-        .setDescription("Mettre à jour ou supprimer un personnage")
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-        .addUserOption(opt =>
-            opt
-                .setName("user")
-                .setDescription("Utilisateur cible")
+        .setDescription("Mettre à jour ou supprimer un personnage (propagé sur les serveurs liés)")
+        .setDefaultMemberPermissions(0)
+        .setDMPermission(false)
+        .addUserOption(o => o.setName("user").setDescription("Cible").setRequired(true))
+        .addIntegerOption(o =>
+            o.setName("slot")
+                .setDescription("Slot (1 ou 2)")
                 .setRequired(true)
+                .addChoices({ name: "1", value: 1 }, { name: "2", value: 2 })
         )
-        .addIntegerOption(opt =>
-            opt
-                .setName("slot")
-                .setDescription("Numéro du personnage (1 ou 2)")
-                .setRequired(true)
-                .setMinValue(1)
-                .setMaxValue(2)
-        )
-        .addStringOption(opt =>
-            opt
-                .setName("name")
-                .setDescription("Nouveau nom (laisser vide pour ne pas changer)")
-                .setRequired(false)
-        )
-        .addStringOption(opt =>
-            opt
-                .setName("job1")
-                .setDescription("Nouveau métier 1 (laisser vide pour ne pas changer)")
-                .setRequired(false)
-        )
-        .addStringOption(opt =>
-            opt
-                .setName("job2")
-                .setDescription("Nouveau métier 2 (laisser vide pour ne pas changer)")
-                .setRequired(false)
-        )
-        .addBooleanOption(opt =>
-            opt
-                .setName("delete")
-                .setDescription("Supprimer complètement ce personnage")
-                .setRequired(false)
-        ),
-
+        .addStringOption(o => o.setName("name").setDescription("Nouveau nom"))
+        .addStringOption(o => o.setName("job1").setDescription("Nouveau métier 1"))
+        .addStringOption(o => o.setName("job2").setDescription("Nouveau métier 2"))
+        .addBooleanOption(o => o.setName("remove").setDescription("Supprimer ce personnage")),
     async execute(interaction) {
-        const ALLOWED_ROLES = [
-            "1313029840328327248",
-            "1304151263851708458",
-            "962270129511604224",
-        ];
-
-        if (
-            !interaction.member.roles.cache.some((r) =>
-                ALLOWED_ROLES.includes(r.id)
-            )
-        ) {
-            return interaction.reply({
-                content: "❌ Vous n’avez pas la permission d’utiliser cette commande.",
-                ephemeral: true,
-            });
+        if (!interaction.member.roles.cache.some(r => ALLOWED_ROLES.includes(r.id))) {
+            return interaction.reply({ content: "❌ pas les bons rôles.", ephemeral: true });
         }
-        const guildId = interaction.guild.id;
-        const userId = interaction.options.getUser("user").id;
+
+        const guildIds = await getLinkedGuildIds(db, interaction.guild.id);
+        const user = interaction.options.getUser("user");
         const slot = interaction.options.getInteger("slot");
-        const toDelete = interaction.options.getBoolean("delete");
-        const newName = interaction.options.getString("name");
-        const newJob1 = interaction.options.getString("job1");
-        const newJob2 = interaction.options.getString("job2");
+        const remove = interaction.options.getBoolean("remove");
+        const name = interaction.options.getString("name");
+        const job1 = interaction.options.getString("job1");
+        const job2 = interaction.options.getString("job2");
 
-        try {
-            if (toDelete) {
-                const [res] = await db.execute(
-                    "DELETE FROM characters WHERE guild_id = ? AND user_id = ? AND slot = ?",
-                    [guildId, userId, slot]
-                );
-                if (res.affectedRows === 0)
-                    return interaction.reply({ content: "❌ Aucune donnée à supprimer.", ephemeral: true });
-                return interaction.reply({ content: `✅ Personnage ${slot} supprimé.`, ephemeral: false });
-            }
-
-            const updates = [];
-            const params = [];
-            if (newName !== null) {
-                updates.push("name = ?");
-                params.push(newName);
-            }
-            if (newJob1 !== null) {
-                updates.push("job1 = ?");
-                params.push(newJob1);
-            }
-            if (newJob2 !== null) {
-                updates.push("job2 = ?");
-                params.push(newJob2);
-            }
-
-            if (updates.length === 0)
-                return interaction.reply({ content: "❌ Vous n'avez rien spécifié à mettre à jour.", ephemeral: true });
-
-            params.push(guildId, userId, slot);
-            const sql = `UPDATE characters SET ${updates.join(", ")} WHERE guild_id = ? AND user_id = ? AND slot = ?`;
-            const [res] = await db.execute(sql, params);
-
-            if (res.affectedRows === 0)
-                return interaction.reply({ content: "❌ Aucun personnage trouvé à mettre à jour.", ephemeral: true });
-
-            return interaction.reply({ content: `✅ Personnage ${slot} mis à jour.`, ephemeral: false });
-        } catch (err) {
-            console.error(err);
-            return interaction.reply({ content: "❌ Erreur lors de la mise à jour.", ephemeral: true });
+        const ph = guildIds.map(() => "?").join(",");
+        if (remove) {
+            await db.execute(
+                `DELETE FROM characters
+         WHERE guild_id IN (${ph}) AND user_id = ? AND slot = ?`,
+                [...guildIds, user.id, slot]
+            );
+            return interaction.reply({ content: `✅ Personnage ${slot} supprimé sur ${guildIds.length} serveur(s).` });
         }
+
+        const fields = [];
+        const vals = [];
+        if (name) { fields.push("name = ?"); vals.push(name); }
+        if (job1) { fields.push("job1 = ?"); vals.push(job1); }
+        if (job2) { fields.push("job2 = ?"); vals.push(job2); }
+        if (fields.length === 0) {
+            return interaction.reply({ content: "❌ Rien à mettre à jour.", ephemeral: true });
+        }
+
+        const sql = `
+      UPDATE characters
+      SET ${fields.join(", ")}
+      WHERE guild_id IN (${ph}) AND user_id = ? AND slot = ?`;
+        await db.execute(sql, [...vals, ...guildIds, user.id, slot]);
+
+        return interaction.reply({ content: `✅ Personnage ${slot} mis à jour sur ${guildIds.length} serveur(s).` });
     },
 };
