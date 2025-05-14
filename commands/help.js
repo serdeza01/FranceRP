@@ -32,6 +32,10 @@ module.exports = {
 **/mod clear [amount]** - Supprime un nombre de message précisé
 **/mod blacklist [user] [reason] [duration]** - Blacklist un utilisateur (similaire au /mod ban) mais récupère des informations
 **/sanction eh [pseudo]** - Permet de trouver l'historique de sanction d'un joueur roblox
+**/remove-sanction [pseudo]** - Permet de retirer une sanction enregistré par vous même
+**/assign-character [pseudo]** - Permet d'ajouter à un utilisateur les informations pour ces 2 personnages RP
+**/update-character [pseudo]** - Permet de mettre à jour un ou plusieurs personnage d'un utilisateur
+**/view-character [pseudo]** - Permet d'avoir les informations des personnages d'un utilisateur
 
 **Les commandes de setup :**
 
@@ -46,6 +50,7 @@ module.exports = {
 **/setup-dm** - Setup le système de message privé
 **/setup-sanction-channels** - Permet d'ajouter ou retirer un channel/thread pour vérifier les sanctions
 **/setup-absence** - Permet d'ajouter ou retirer le système d'absence pour le staff
+**/setlogchannel** - Permet de setup le system de logs des commandes effectué par le bot
 
 **Les autres commandes :**
 
@@ -65,6 +70,8 @@ module.exports = {
 **/link [guildId]** - Permet de relier 2 serveur pour partager l'historique des sanctions
 **/addabsence** - Permet d'ajouter une absence
 **/removeabsence** - Permet de retirer une absence
+**/embed** - Permet de créer et envoyé un embed avec le bot
+**/multiimages** - Même chose que le /embed mais permet d'inclure plusieurs images
       `)
       .setColor("#00ff00")
       .setFooter({ text: "Made by serdeza" })
