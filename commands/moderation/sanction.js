@@ -19,18 +19,18 @@ module.exports = {
         .addSubcommand(sub =>
             sub
                 .setName("stats")
-                .setDescription("Afficher le total des sanctions appliquées (ou d'un sanctionneur)")
+                .setDescription("Afficher le total des sanctions appliquées (ou d'un staff)")
                 .addUserOption(opt =>
                     opt
                         .setName("utilisateur")
-                        .setDescription("Le sanctionneur à cibler (optionnel)")
+                        .setDescription("Le staff choisi (optionnel)")
                         .setRequired(false)
                 )
         )
         .addSubcommand(sub =>
             sub
                 .setName("leaderboard")
-                .setDescription("Afficher le classement des sanctionneurs")
+                .setDescription("Afficher le leaderboard")
         ),
 
     async execute(interaction) {
@@ -106,19 +106,19 @@ module.exports = {
         if (sub === "leaderboard") {
             const [rows] = await db.execute(
                 `
-        SELECT
-          punisher_id,
-          SUM(CASE WHEN duration = 'Permanent' THEN 1 ELSE 0 END) AS permanent,
-          SUM(CASE WHEN duration = 'Kick'      THEN 1 ELSE 0 END) AS kicks,
-          SUM(CASE WHEN duration = '7 jour(s)'        THEN 1 ELSE 0 END) AS ban7,
-          SUM(CASE WHEN duration = '2 jour(s)'        THEN 1 ELSE 0 END) AS ban2,
-          COUNT(*)                                 AS total
-        FROM sanctions
-        WHERE guild_id IN (${placeholders})
-        GROUP BY punisher_id
-        ORDER BY total DESC
-        LIMIT 35
-        `,
+    SELECT
+      punisher_id,
+      SUM(CASE WHEN duration = 'permanent' THEN 1 ELSE 0 END) AS permanent,
+      SUM(CASE WHEN duration = 'kick'      THEN 1 ELSE 0 END) AS kicks,
+      SUM(CASE WHEN duration = '7J'        THEN 1 ELSE 0 END) AS ban7,
+      SUM(CASE WHEN duration = '2J'        THEN 1 ELSE 0 END) AS ban2,
+      COUNT(*)                                 AS total
+    FROM sanctions
+    WHERE guild_id IN (${placeholders})
+    GROUP BY punisher_id
+    ORDER BY total DESC
+    LIMIT 50
+    `,
                 guildIds
             );
 
@@ -129,16 +129,23 @@ module.exports = {
                 });
             }
 
-            const description = rows
+            const top = rows.slice(0, 15);
+
+            let description = top
                 .map((r, i) =>
                     `**#${i + 1} • <@${r.punisher_id}>**\n` +
-                    `> 🔴 \`Permanent\`   : ${r.permanent}   🟠 \`7 jours\` : ${r.ban7}   🟡 \`2 jours\` : ${r.ban2}   ⚫ \`Kick\` : ${r.kicks}\n` +
+                    `> 🔴 \`Permanent\`   : ${r.permanent}   🟠 \`7 jour(s)\` : ${r.ban7}   🟡 \`2 jour(s)\` : ${r.ban2}   ⚫ \`Kick\` : ${r.kicks}\n` +
                     `> **Total** : \`${r.total}\``
                 )
                 .join("\n\n");
 
+            if (description.length > 4096) {
+                description = description.slice(0, 4090);
+                description += "\n\n*…et plus de résultats.*";
+            }
+
             const embed = new EmbedBuilder()
-                .setTitle("Les staffs ayant mis le plus de sanctions")
+                .setTitle("Les staffs ayant appliqués le plus de sanctions")
                 .setColor(0x00AAFF)
                 .setDescription(description)
                 .setTimestamp();
