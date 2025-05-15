@@ -108,10 +108,10 @@ module.exports = {
                 `
     SELECT
       punisher_id,
-      SUM(CASE WHEN duration = 'permanent' THEN 1 ELSE 0 END) AS permanent,
-      SUM(CASE WHEN duration = 'kick'      THEN 1 ELSE 0 END) AS kicks,
-      SUM(CASE WHEN duration = '7J'        THEN 1 ELSE 0 END) AS ban7,
-      SUM(CASE WHEN duration = '2J'        THEN 1 ELSE 0 END) AS ban2,
+      SUM(CASE WHEN duration = 'Permanent' THEN 1 ELSE 0 END) AS permanent,
+      SUM(CASE WHEN duration = 'Kick'      THEN 1 ELSE 0 END) AS kicks,
+      SUM(CASE WHEN duration = '7 jour(s)'        THEN 1 ELSE 0 END) AS ban7,
+      SUM(CASE WHEN duration = '2 jour(s)'        THEN 1 ELSE 0 END) AS ban2,
       COUNT(*)                                 AS total
     FROM sanctions
     WHERE guild_id IN (${placeholders})
