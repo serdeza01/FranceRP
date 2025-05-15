@@ -709,6 +709,7 @@ client.on("messageCreate", async (message) => {
   }
 
   try {
+    const guildId = message.guild.id;
     const [sanctionConfigRows] = await db.execute(
       "SELECT channel_ids, embed_channel_id FROM sanction_config WHERE guild_id = ?",
       [guildId]
@@ -733,13 +734,11 @@ client.on("messageCreate", async (message) => {
     } else if (/^kick$/i.test(sanctionRaw)) {
       duration = "Kick";
     } else if (durRegex.test(sanctionRaw)) {
-      const parts = sanctionRaw.match(durRegex);
-      const nombre = parts[1];
-      const uniteLetter = parts[2].toUpperCase();
+      const [, nombre, uniteLetter] = sanctionRaw.match(durRegex);
       let unite;
-      if (uniteLetter === "J") unite = "jour(s)";
-      else if (uniteLetter === "M") unite = "mois";
-      else if (uniteLetter === "A") unite = "an(s)";
+      if (uniteLetter.toUpperCase() === "J") unite = "jour(s)";
+      else if (uniteLetter.toUpperCase() === "M") unite = "mois";
+      else unite = "an(s)";
       duration = `${nombre} ${unite}`;
     } else if (/^(perm|permanent)$/i.test(sanctionRaw)) {
       duration = "Permanent";
@@ -747,9 +746,20 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
+    const dateApplication = message.createdAt;
+
     await db.execute(
-      "INSERT INTO sanctions (guild_id, punisher_id, pseudo, raison, duration) VALUES (?, ?, ?, ?, ?)",
-      [guildId, message.author.id, pseudo, raison, duration]
+      `INSERT INTO sanctions
+       (guild_id, punisher_id, pseudo, raison, duration, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        guildId,
+        message.author.id,
+        pseudo,
+        raison,
+        duration,
+        dateApplication
+      ]
     );
 
     const { EmbedBuilder } = require("discord.js");
@@ -759,7 +769,12 @@ client.on("messageCreate", async (message) => {
         { name: "Pseudo", value: pseudo, inline: true },
         { name: "Raison", value: raison, inline: true },
         { name: "Sanction", value: duration, inline: true },
-        { name: "Sanctionné par", value: `<@${message.author.id}>`, inline: true }
+        { name: "Sanctionné par", value: `<@${message.author.id}>`, inline: true },
+        {
+          name: "Date appliquée",
+          value: `<t:${Math.floor(dateApplication.getTime() / 1000)}:F>`,
+          inline: true
+        }
       )
       .setColor(0xff0000)
       .setTimestamp();
@@ -767,9 +782,8 @@ client.on("messageCreate", async (message) => {
     const embedChannel = await message.guild.channels.fetch(
       sanctionConfigRows[0].embed_channel_id
     );
-    if (embedChannel) {
-      embedChannel.send({ embeds: [embed] });
-    }
+    if (embedChannel) embedChannel.send({ embeds: [embed] });
+
   } catch (err) {
     console.error("Erreur lors du traitement des sanctions :", err);
   }
