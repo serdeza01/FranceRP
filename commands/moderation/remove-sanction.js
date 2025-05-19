@@ -10,9 +10,7 @@ const db = require("../../db");
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("remove-sanction")
-    .setDescription(
-      "Supprimer une sanction que vous avez appliquée à un utilisateur"
-    )
+    .setDescription("Supprimer une sanction que vous avez appliquée à un utilisateur")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .addStringOption((option) =>
       option
@@ -23,24 +21,29 @@ module.exports = {
 
   async execute(interaction) {
     try {
-      const [configRows] = await db.execute(
-        "SELECT allowed_role_id FROM sanction_config WHERE guild_id = ?",
-        [interaction.guild.id]
+      const guildId = interaction.guild.id;
+
+      const SUPER_MOD_ROLES = [
+        "1313029840328327248",
+        "1304151263851708458",
+      ];
+      const isSuperMod = SUPER_MOD_ROLES.some((rid) =>
+        interaction.member.roles.cache.has(rid)
       );
 
-      if (configRows.length === 0) {
-        return interaction.reply({
-          content:
-            "La configuration des sanctions n'est pas définie sur ce serveur.",
-          ephemeral: true,
-        });
+      const [[config]] = await db.execute(
+        "SELECT allowed_role_id FROM sanction_config WHERE guild_id = ?",
+        [guildId]
+      );
+
+      let allowedRoleId = null;
+      if (config && config.allowed_role_id != null) {
+        allowedRoleId = String(config.allowed_role_id);
       }
 
-      const allowedRoleId = configRows[0].allowed_role_id;
-
-      if (!interaction.member.roles.cache.has(allowedRoleId)) {
+      if (!isSuperMod && (!allowedRoleId || !interaction.member.roles.cache.has(allowedRoleId))) {
         return interaction.reply({
-          content: "Vous n'avez pas la permission d'utiliser cette commande.",
+          content: "❌ Vous n'avez pas la permission d'utiliser cette commande.",
           ephemeral: true,
         });
       }
@@ -49,12 +52,12 @@ module.exports = {
 
       const [sanctions] = await db.execute(
         "SELECT id, pseudo, raison, duration FROM sanctions WHERE guild_id = ? AND punisher_id = ? AND pseudo = ?",
-        [interaction.guild.id, interaction.user.id, targetPseudo]
+        [guildId, interaction.user.id, targetPseudo]
       );
 
       if (sanctions.length === 0) {
         return interaction.reply({
-          content: `Vous n'avez appliqué aucune sanction pour le pseudo **${targetPseudo}**.`,
+          content: `❌ Vous n'avez appliqué aucune sanction pour le pseudo **${targetPseudo}**.`,
           ephemeral: true,
         });
       }
@@ -89,6 +92,7 @@ module.exports = {
       const filter = (i) =>
         i.customId === "remove_sanction_select" &&
         i.user.id === interaction.user.id;
+
       const collector = interaction.channel.createMessageComponentCollector({
         filter,
         time: 60000,
@@ -104,7 +108,7 @@ module.exports = {
         );
 
         await i.update({
-          content: `La sanction d'ID ${sanctionId} a été supprimée avec succès.`,
+          content: `✅ La sanction d'ID ${sanctionId} a été supprimée avec succès.`,
           embeds: [],
           components: [],
         });
@@ -113,7 +117,7 @@ module.exports = {
       collector.on("end", async (collected) => {
         if (collected.size === 0) {
           await interaction.editReply({
-            content: "Aucune sélection effectuée dans le délai imparti.",
+            content: "⏱️ Aucune sélection effectuée dans le délai imparti.",
             components: [],
           });
         }
@@ -121,8 +125,7 @@ module.exports = {
     } catch (error) {
       console.error("Erreur lors de la suppression de la sanction :", error);
       return interaction.reply({
-        content:
-          "Une erreur est survenue lors de la suppression de la sanction.",
+        content: "❌ Une erreur est survenue lors de la suppression de la sanction.",
         ephemeral: true,
       });
     }
