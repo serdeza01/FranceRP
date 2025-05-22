@@ -7,20 +7,40 @@ module.exports = {
 
     async execute(interaction) {
         if (interaction.user.id !== "637760775691173888") {
-            return interaction.reply({ content: "❌ Tu n'as pas la permission d'utiliser cette commande.", ephemeral: true });
+            return interaction.reply({
+                content: "❌ Tu n'as pas la permission d'utiliser cette commande.",
+                ephemeral: true
+            });
         }
 
         const embed = new EmbedBuilder()
-            .setTitle("📊 Liste des serveurs")
+            .setTitle("📊 Liste des serveurs (triée par membres)")
             .setColor(0x3498db);
 
-        interaction.client.guilds.cache.forEach(guild => {
+        const sortedGuilds = interaction.client.guilds.cache
+            .sort((a, b) => b.memberCount - a.memberCount)
+            .values();
+
+        for (const guild of sortedGuilds) {
+            let ownerTag = "Inconnu";
+
+            try {
+                const owner = await guild.fetchOwner();
+                ownerTag = `${owner.user.tag}`;
+            } catch (err) {
+                console.warn(`Impossible d'obtenir l'owner pour ${guild.name}: ${err.message}`);
+            }
+
             embed.addFields({
                 name: guild.name,
-                value: `🆔 \`${guild.id}\`\n👥 **${guild.memberCount}** membres\n📅 Ajouté le : <t:${Math.floor(guild.joinedTimestamp / 1000)}:F>`,
+                value:
+                    `🆔 \`${guild.id}\`\n` +
+                    `👑 Owner: ${ownerTag}\n` +
+                    `👥 Membres: **${guild.memberCount}**\n` +
+                    `📅 Ajouté le: <t:${Math.floor(guild.joinedTimestamp / 1000)}:F>`,
                 inline: false
             });
-        });
+        }
 
         interaction.reply({ embeds: [embed], ephemeral: true });
     }
