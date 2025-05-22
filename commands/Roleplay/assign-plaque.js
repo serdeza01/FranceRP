@@ -38,7 +38,7 @@ module.exports = {
         const guildId = interaction.guild.id;
 
         const [[personnage]] = await db.execute(`
-            SELECT * FROM \`character\` 
+            SELECT * FROM \`characters\` 
             WHERE guild_id = ? AND user_id = ? AND nom = ?
         `, [guildId, utilisateur.id, nom]);
 

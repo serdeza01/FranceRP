@@ -33,7 +33,7 @@ module.exports = {
         }
 
         const [jobsData] = await db.execute(`
-      SELECT jobs FROM \`character\`
+      SELECT jobs FROM \`characters\`
       WHERE user_id = ? AND nom = ? AND guild_id = ?
     `, [plaqueData.user_id, plaqueData.nom, plaqueData.guild_id]);
 
