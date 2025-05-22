@@ -16,27 +16,28 @@ module.exports = {
         const guildId = interaction.guild.id;
 
         const [[plaqueData]] = await db.execute(`
-      SELECT * FROM plaque_registry WHERE plaque = ?
-    `, [plaque]);
+            SELECT * FROM plaque_registry WHERE plaque = ?
+        `, [plaque]);
 
         if (!plaqueData) {
             return interaction.reply({ content: "❌ Aucune plaque trouvée.", ephemeral: true });
         }
 
         const [[link]] = await db.execute(`
-      SELECT * FROM linked_servers 
-      WHERE (guild_id1 = ? AND guild_id2 = ?) OR (guild_id1 = ? AND guild_id2 = ?)
-    `, [guildId, plaqueData.guild_id, plaqueData.guild_id, guildId]);
+            SELECT * FROM linked_servers 
+            WHERE (guild_id1 = ? AND guild_id2 = ?) OR (guild_id1 = ? AND guild_id2 = ?)
+        `, [guildId, plaqueData.guild_id, plaqueData.guild_id, guildId]);
 
         if (plaqueData.guild_id !== guildId && !link) {
             return interaction.reply({ content: "❌ Cette plaque n'est pas accessible depuis ce serveur.", ephemeral: true });
         }
 
-        const [[jobsData]] = await db.execute(`
-    SELECT job1, job2 FROM \`characters\`
-    WHERE user_id = ? AND name = ? AND guild_id = ?
-`, [plaqueData.user_id, plaqueData.nom, plaqueData.guild_id]);
+        const [characterRows] = await db.execute(`
+            SELECT job1, job2 FROM \`characters\`
+            WHERE user_id = ? AND name = ? AND guild_id = ?
+        `, [plaqueData.user_id, plaqueData.nom, plaqueData.guild_id]);
 
+        const character = characterRows[0];
 
         const user = await interaction.client.users.fetch(plaqueData.user_id).catch(() => null);
 
