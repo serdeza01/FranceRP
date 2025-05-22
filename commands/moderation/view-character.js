@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const db = require("../../db");
-const getLinkedGuildIds = require("../../getLinkedGuildIds");
+const getLinkedGuildIds = require("../../tasks/getLinkedGuildIds");
 
 const ALLOWED_ROLES = [
     "1313029840328327248",
