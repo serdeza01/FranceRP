@@ -864,7 +864,15 @@ client.on("interactionCreate", async (interaction) => {
   } else if (interaction.isButton()) {
     const buttonHandler = require("./interactionCreate");
     buttonHandler(interaction);
-  }
+  } else if (!interaction.isCommand()) return;
+
+  const commandName = interaction.commandName;
+  const guildId = interaction.guild?.id || "dm";
+
+  await db.execute(
+    "INSERT INTO commands_logs (guild_id, command_name) VALUES (?, ?)",
+    [guildId, commandName]
+  );
 });
 
 (async () => {
