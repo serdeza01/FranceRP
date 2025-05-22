@@ -19,7 +19,7 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 
-const { sendTicketPanel } = require("./ticketPanel");
+const { sendTicketPanel } = require("./tasks/ticketPanel");
 const {
   updatePresenceEmbed,
   buildPresenceEmbed,
@@ -807,7 +807,7 @@ client.on("interactionCreate", async (interaction) => {
       await command.execute(interaction, client, context);
 
       if (!interaction.alreadyLogged) {
-        const { logCommandUsage } = require("./logSystem");
+        const { logCommandUsage } = require("./tasks/logSystem");
         await logCommandUsage(client, interaction, {
           affected: interaction.channel ? interaction.channel.name : "MP",
         });

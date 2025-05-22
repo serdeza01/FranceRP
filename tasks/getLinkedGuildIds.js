@@ -1,5 +1,5 @@
 /**
- * @param {import('./db')} db
+ * @param {import('../db')} db
  * @param {string} guildId
  * @returns {Promise<string[]>}
  */

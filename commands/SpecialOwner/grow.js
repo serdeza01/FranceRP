@@ -2,27 +2,42 @@ const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
 const { ChartJSNodeCanvas } = require("chartjs-node-canvas");
 const db = require("../../db");
 
+const WIDTH = 800;
+const HEIGHT = 400;
+
+const chartJSNodeCanvas = new ChartJSNodeCanvas({ width: WIDTH, height: HEIGHT });
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("grow")
-        .setDescription("Affiche la croissance des utilisateurs et serveurs"),
+        .setDescription("Affiche un graphique de l'évolution des stats du bot (users & serveurs)"),
 
     async execute(interaction) {
-        if (interaction.user.id !== "637760775691173888") {
-            return interaction.reply({ content: "❌ Tu n'as pas la permission d'utiliser cette commande.", ephemeral: true });
+        const ownerId = "637760775691173888";
+        if (interaction.user.id !== ownerId) {
+            return interaction.reply({ content: "❌ Tu n'es pas autorisé à utiliser cette commande.", ephemeral: true });
         }
 
-        const [rows] = await db.execute("SELECT * FROM bot_stats ORDER BY date ASC");
+        const [rows] = await db.execute(`
+            SELECT
+                DATE(timestamp) AS day,
+                MAX(user_count) AS user_count,
+                MAX(server_count) AS server_count
+            FROM bot_stats
+            GROUP BY day
+            ORDER BY day ASC
+            LIMIT 30
+        `);
 
-        const labels = rows.map(row => row.date.toISOString().split("T")[0]);
-        const userData = rows.map(row => row.user_count);
-        const serverData = rows.map(row => row.server_count);
+        if (!rows.length) {
+            return interaction.reply({ content: "❌ Aucune donnée disponible.", ephemeral: true });
+        }
 
-        const width = 800;
-        const height = 400;
-        const chart = new ChartJSNodeCanvas({ width, height });
+        const labels = rows.map(r => r.day);
+        const userData = rows.map(r => r.user_count);
+        const serverData = rows.map(r => r.server_count);
 
-        const image = await chart.renderToBuffer({
+        const config = {
             type: "line",
             data: {
                 labels,
@@ -30,26 +45,43 @@ module.exports = {
                     {
                         label: "Utilisateurs",
                         data: userData,
-                        borderColor: "rgba(75, 192, 192, 1)",
-                        fill: false
+                        borderColor: "rgba(54, 162, 235, 1)",
+                        backgroundColor: "rgba(54, 162, 235, 0.2)",
+                        fill: true,
+                        tension: 0.3
                     },
                     {
                         label: "Serveurs",
                         data: serverData,
                         borderColor: "rgba(255, 99, 132, 1)",
-                        fill: false
+                        backgroundColor: "rgba(255, 99, 132, 0.2)",
+                        fill: true,
+                        tension: 0.3
                     }
                 ]
             },
             options: {
-                responsive: false,
                 plugins: {
-                    title: { display: true, text: "Croissance du bot" }
+                    title: {
+                        display: true,
+                        text: "Évolution des stats du bot (30 derniers jours)",
+                        font: { size: 18 }
+                    },
+                    legend: {
+                        position: "bottom"
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
                 }
             }
-        });
+        };
 
-        const attachment = new AttachmentBuilder(image, { name: "growth.png" });
+        const buffer = await chartJSNodeCanvas.renderToBuffer(config);
+        const attachment = new AttachmentBuilder(buffer, { name: "growth.png" });
+
         await interaction.reply({ files: [attachment] });
     }
 };
