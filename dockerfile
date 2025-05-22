@@ -1,6 +1,5 @@
 FROM node:18-alpine
 
-# 🔧 Installation des dépendances système nécessaires à canvas
 RUN apk add --no-cache \
     python3 \
     make \
@@ -15,6 +14,7 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 COPY package*.json ./
+
 RUN npm install --omit=dev
 
 COPY . .
