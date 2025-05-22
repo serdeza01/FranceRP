@@ -32,10 +32,11 @@ module.exports = {
             return interaction.reply({ content: "❌ Cette plaque n'est pas accessible depuis ce serveur.", ephemeral: true });
         }
 
-        const [jobsData] = await db.execute(`
-      SELECT jobs FROM \`characters\`
-      WHERE user_id = ? AND name = ? AND guild_id = ?
-    `, [plaqueData.user_id, plaqueData.nom, plaqueData.guild_id]);
+        const [[jobsData]] = await db.execute(`
+    SELECT job1, job2 FROM \`characters\`
+    WHERE user_id = ? AND name = ? AND guild_id = ?
+`, [plaqueData.user_id, plaqueData.nom, plaqueData.guild_id]);
+
 
         const user = await interaction.client.users.fetch(plaqueData.user_id).catch(() => null);
 
@@ -45,7 +46,7 @@ module.exports = {
             .addFields(
                 { name: "Nom", value: `${plaqueData.prenom} ${plaqueData.nom}`, inline: true },
                 { name: "Adresse mail", value: user ? user.tag : "Inconnu", inline: true },
-                { name: "Jobs", value: jobsData.length > 0 ? jobsData.map(j => j.jobs).join(", ") : "Aucun", inline: false }
+                { name: "Jobs", value: character ? `${character.job1 || "Aucun"} / ${character.job2 || "Aucun"}` : "Aucun", inline: false }
             )
             .setFooter({ text: "Données récupérées avec succès" });
 

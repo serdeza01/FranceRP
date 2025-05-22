@@ -61,14 +61,14 @@ module.exports = {
 
         for (const plaque of plaques) {
             const [[character]] = await db.execute(`
-        SELECT jobs FROM \`characters\` 
-        WHERE name = ? AND user_id = ? AND guild_id = ?
-      `, [nom, plaque.user_id, plaque.guild_id]);
+    SELECT job1, job2 FROM \`characters\` 
+    WHERE name = ? AND user_id = ? AND guild_id = ?
+`, [plaque.nom, plaque.user_id, plaque.guild_id]);
 
             const user = await interaction.client.users.fetch(plaque.user_id).catch(() => null);
             embed.addFields({
                 name: `Plaque : ${plaque.plaque}`,
-                value: `👤 **Utilisateur :** ${user ? user.tag : "Inconnu"}\n📧 **Adresse mail :** ${user ? "Inconnue" : "N/A"}\n🧰 **Jobs :** ${character ? character.jobs : "Aucun"}\n🆔 **Serveur :** ${plaque.guild_id}`,
+                value: `👤 **Utilisateur :** ${user ? user.tag : "Inconnu"}\n🧰 **Jobs :** ${character ? `${character.job1 || "Aucun"} / ${character.job2 || "Aucun"}` : "Aucun"}\n🆔 **Serveur :** ${plaque.guild_id}`,
                 inline: false
             });
         }
