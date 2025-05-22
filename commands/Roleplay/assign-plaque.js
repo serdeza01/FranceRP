@@ -38,20 +38,18 @@ module.exports = {
         const guildId = interaction.guild.id;
 
         const [[personnage]] = await db.execute(`
-  SELECT * FROM \`character\` 
-  WHERE guild_id = ? AND user_id = ? AND nom = ?
-`, [guildId, userId, nom]);
-
+            SELECT * FROM \`character\` 
+            WHERE guild_id = ? AND user_id = ? AND nom = ?
+        `, [guildId, utilisateur.id, nom]);
 
         if (!personnage) {
             return interaction.reply({ content: "❌ Aucun personnage correspondant trouvé pour ce nom.", ephemeral: true });
         }
 
         await db.execute(`
-      REPLACE INTO plaque_registry (plaque, user_id, prenom, nom, guild_id)
-      VALUES (?, ?, ?, ?, ?)`,
-            [plaque, utilisateur.id, prenom, nom, guildId]
-        );
+            REPLACE INTO plaque_registry (plaque, user_id, prenom, nom, guild_id)
+            VALUES (?, ?, ?, ?, ?)
+        `, [plaque, utilisateur.id, prenom, nom, guildId]);
 
         return interaction.reply({ content: `✅ Plaque **${plaque}** assignée à **${prenom} ${nom}**.`, ephemeral: true });
     }
