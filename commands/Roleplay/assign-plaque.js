@@ -39,7 +39,7 @@ module.exports = {
 
         const [[personnage]] = await db.execute(`
             SELECT * FROM \`characters\` 
-            WHERE guild_id = ? AND user_id = ? AND nom = ?
+            WHERE guild_id = ? AND user_id = ? AND name = ?
         `, [guildId, utilisateur.id, nom]);
 
         if (!personnage) {

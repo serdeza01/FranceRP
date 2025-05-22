@@ -62,7 +62,7 @@ module.exports = {
         for (const plaque of plaques) {
             const [[character]] = await db.execute(`
         SELECT jobs FROM \`characters\` 
-        WHERE nom = ? AND user_id = ? AND guild_id = ?
+        WHERE name = ? AND user_id = ? AND guild_id = ?
       `, [nom, plaque.user_id, plaque.guild_id]);
 
             const user = await interaction.client.users.fetch(plaque.user_id).catch(() => null);

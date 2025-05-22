@@ -34,7 +34,7 @@ module.exports = {
 
         const [jobsData] = await db.execute(`
       SELECT jobs FROM \`characters\`
-      WHERE user_id = ? AND nom = ? AND guild_id = ?
+      WHERE user_id = ? AND name = ? AND guild_id = ?
     `, [plaqueData.user_id, plaqueData.nom, plaqueData.guild_id]);
 
         const user = await interaction.client.users.fetch(plaqueData.user_id).catch(() => null);
