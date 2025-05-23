@@ -41,9 +41,12 @@ module.exports = {
         }
 
         for (const [guildId, data] of guildMap.entries()) {
+            const guild = interaction.client.guilds.cache.get(guildId);
+            const guildName = guild ? guild.name : "Serveur inconnu";
+
             embed.addFields({
-                name: `Serveur ID: ${guildId}`,
-                value: `📌 **${data.name}** - \`${data.count}\` fois`,
+                name: guildName,
+                value: `📌 **${data.name}** - \`${data.count}\` fois\n🆔 \`${guildId}\``,
                 inline: false
             });
         }

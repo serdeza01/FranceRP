@@ -71,7 +71,10 @@ module.exports = {
 **/addabsence** - Permet d'ajouter une absence
 **/removeabsence** - Permet de retirer une absence
 **/embed** - Permet de créer et envoyé un embed avec le bot
-**/multiimages** - Même chose que le /embed mais permet d'inclure plusieurs images
+**/assign-plate** - Permet d'ajouter une plaque d'immatriculation à un utilisateur
+**/recherche-plaque** - Permet de trouver à qui appartient une plaque d'immatriculation
+**/user-plate** - Permet d'avoir toute les plaques d'immatriculation enregistré à un même nom et prénom
+**/plaque** - Permet de modifier / supprimer une plaque d'immatriculation assigné à quelqu'un.
       `)
       .setColor("#00ff00")
       .setFooter({ text: "Made by serdeza" })

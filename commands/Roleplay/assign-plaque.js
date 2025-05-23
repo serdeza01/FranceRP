@@ -29,14 +29,18 @@ module.exports = {
     async execute(interaction) {
         const user = interaction.options.getUser("utilisateur");
         const prenom = interaction.options.getString("prenom");
-        const nom = interaction.options.getString("nom").toUpperCase();
+        const nom = interaction.options.getString("nom");
         const plaque = interaction.options.getString("plaque").toUpperCase();
         const guildId = interaction.guild.id;
 
         const [characterRows] = await db.execute(`
-            SELECT * FROM characters 
-            WHERE guild_id = ? AND user_id = ? AND name = ?
-        `, [guildId, user.id, nom]);
+    SELECT * FROM characters 
+    WHERE user_id = ? 
+      AND name LIKE ?
+`, [user.id, `%${nom}%`]);
+
+        console.log("[DEBUG] Résultat characters :", characterRows);
+
 
         if (characterRows.length === 0) {
             return interaction.reply({ content: "❌ Aucun personnage trouvé avec ce nom pour cet utilisateur.", ephemeral: true });
@@ -53,8 +57,8 @@ module.exports = {
         await db.execute(`
             INSERT INTO plaque_registry (plaque, user_id, prenom, nom, guild_id)
             VALUES (?, ?, ?, ?, ?)
-        `, [plaque, user.id, prenom, nom, guildId]);
+        `, [plaque, user.id, prenom, nom.toUpperCase(), guildId]);
 
-        return interaction.reply({ content: `✅ La plaque \`${plaque}\` a été assignée à **${prenom} ${nom}**.` });
+        return interaction.reply({ content: `✅ La plaque \`${plaque}\` a été assignée à **${prenom} ${nom.toUpperCase()}**.` });
     }
 };

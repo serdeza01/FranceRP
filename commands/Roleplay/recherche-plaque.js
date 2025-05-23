@@ -33,9 +33,9 @@ module.exports = {
         }
 
         const [characterRows] = await db.execute(`
-            SELECT job1, job2 FROM \`characters\`
+            SELECT job1, job2 FROM characters
             WHERE user_id = ? AND name = ? AND guild_id = ?
-        `, [plaqueData.user_id, plaqueData.nom, plaqueData.guild_id]);
+        `, [plaqueData.user_id, `${plaqueData.prenom} ${plaqueData.nom}`, plaqueData.guild_id]);
 
         const character = characterRows[0];
 

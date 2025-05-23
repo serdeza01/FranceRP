@@ -28,9 +28,9 @@ module.exports = {
         const currentGuildId = interaction.guild.id;
 
         const [linked] = await db.execute(`
-      SELECT guild_id1, guild_id2 FROM linked_servers
-      WHERE guild_id1 = ? OR guild_id2 = ?
-    `, [currentGuildId, currentGuildId]);
+            SELECT guild_id1, guild_id2 FROM linked_servers
+            WHERE guild_id1 = ? OR guild_id2 = ?
+        `, [currentGuildId, currentGuildId]);
 
         const allowedGuilds = new Set([currentGuildId]);
         for (const row of linked) {
@@ -39,9 +39,9 @@ module.exports = {
         }
 
         let [plaques] = await db.execute(`
-      SELECT * FROM plaque_registry 
-      WHERE nom = ? AND prenom = ?
-    `, [nom, prenom]);
+            SELECT * FROM plaque_registry 
+            WHERE nom = ? AND prenom = ?
+        `, [nom, prenom]);
 
         plaques = plaques.filter(p =>
             allowedGuilds.has(p.guild_id) &&
@@ -61,11 +61,12 @@ module.exports = {
 
         for (const plaque of plaques) {
             const [[character]] = await db.execute(`
-    SELECT job1, job2 FROM \`characters\` 
-    WHERE name = ? AND user_id = ? AND guild_id = ?
-`, [plaque.nom, plaque.user_id, plaque.guild_id]);
+                SELECT job1, job2 FROM characters 
+                WHERE name = ? AND user_id = ? AND guild_id = ?
+            `, [`${plaque.prenom} ${plaque.nom}`, plaque.user_id, plaque.guild_id]);
 
             const user = await interaction.client.users.fetch(plaque.user_id).catch(() => null);
+
             embed.addFields({
                 name: `Plaque : ${plaque.plaque}`,
                 value: `👤 **Utilisateur :** ${user ? user.tag : "Inconnu"}\n🧰 **Jobs :** ${character ? `${character.job1 || "Aucun"} / ${character.job2 || "Aucun"}` : "Aucun"}\n🆔 **Serveur :** ${plaque.guild_id}`,
