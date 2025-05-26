@@ -8,11 +8,6 @@ const db = require("../../db");
 
 const EPHEMERAL_FLAG = 1 << 6;
 
-/**
- * Scanne un salon texte, un thread ou un forum.
- * Si c'est un forum, on itère sur chacun de ses threads actifs.
- * Enregistre les sanctions et envoie un embed de contrôle.
- */
 async function scanAndRegisterSanctions(channel, embedChannel, guildId) {
   if (channel.type === ChannelType.GuildForum) {
     const fetched = await channel.threads.fetchActive();
@@ -96,7 +91,7 @@ module.exports = {
     .addSubcommand(sub =>
       sub
         .setName("initialiser")
-        .setDescription("Définit le salon d'embed et la première liste de salons à scanner")
+        .setDescription("Définit le salon d'embed, le rôle autorisé, et le premier salon à scanner")
         .addChannelOption(opt =>
           opt
             .setName("embed")
@@ -115,6 +110,12 @@ module.exports = {
               ChannelType.PublicThread,
               ChannelType.PrivateThread
             )
+        )
+        .addRoleOption(opt =>
+          opt
+            .setName("role")
+            .setDescription("Rôle autorisé à gérer les sanctions")
+            .setRequired(true)
         )
     )
     .addSubcommand(sub =>
@@ -160,35 +161,37 @@ module.exports = {
       if (sub === "initialiser") {
         const embedCh = interaction.options.getChannel("embed");
         const salon = interaction.options.getChannel("salon");
+        const role = interaction.options.getRole("role");
 
         await db.execute(
           `INSERT INTO sanction_config
-             (guild_id, embed_channel_id, channel_ids)
-           VALUES (?, ?, ?)
+             (guild_id, embed_channel_id, channel_ids, allowed_role_id)
+           VALUES (?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE
              embed_channel_id = VALUES(embed_channel_id),
-             channel_ids      = VALUES(channel_ids)`,
-          [guildId, embedCh.id, JSON.stringify([salon.id])]
+             channel_ids      = VALUES(channel_ids),
+             allowed_role_id  = VALUES(allowed_role_id)`,
+          [guildId, embedCh.id, JSON.stringify([salon.id]), role.id]
         );
 
         await interaction.reply({
-          content: `Initialisation terminée.\nEmbed dans <#${embedCh.id}>, scan de <#${salon.id}>.`,
+          content: `✅ Initialisation terminée.\nEmbed dans <#${embedCh.id}>, scan de <#${salon.id}>, rôle autorisé : <@&${role.id}>.`,
           flags: EPHEMERAL_FLAG
         });
 
         await scanAndRegisterSanctions(salon, embedCh, guildId);
       }
+
       else if (sub === "ajouter" || sub === "retirer") {
         const salon = interaction.options.getChannel("salon");
         const [rows] = await db.execute(
-          `SELECT embed_channel_id, channel_ids
-             FROM sanction_config
-            WHERE guild_id = ?`,
+          `SELECT embed_channel_id, channel_ids FROM sanction_config WHERE guild_id = ?`,
           [guildId]
         );
+
         if (!rows.length) {
           return interaction.reply({
-            content: "Aucune configuration trouvée, faites `/setup-sanction-channels initialiser` d’abord.",
+            content: "❌ Aucune configuration trouvée, faites `/setup-sanction-channels initialiser` d’abord.",
             flags: EPHEMERAL_FLAG
           });
         }
@@ -204,8 +207,7 @@ module.exports = {
             });
           }
           channelIds.push(salon.id);
-        }
-        else {
+        } else {
           if (!channelIds.includes(salon.id)) {
             return interaction.reply({
               content: "Ce salon/thread/forum n'est pas dans la configuration.",
@@ -216,16 +218,14 @@ module.exports = {
         }
 
         await db.execute(
-          `UPDATE sanction_config
-              SET channel_ids = ?
-            WHERE guild_id = ?`,
+          `UPDATE sanction_config SET channel_ids = ? WHERE guild_id = ?`,
           [JSON.stringify(channelIds), guildId]
         );
 
         await interaction.reply({
           content: sub === "ajouter"
-            ? `Ajouté <#${salon.id}> à la configuration.`
-            : `Retiré <#${salon.id}> de la configuration.`,
+            ? `✅ Ajouté <#${salon.id}> à la configuration.`
+            : `✅ Retiré <#${salon.id}> de la configuration.`,
           flags: EPHEMERAL_FLAG
         });
 
@@ -234,12 +234,12 @@ module.exports = {
           await scanAndRegisterSanctions(salon, embedCh, guildId);
         }
       }
-    }
-    catch (err) {
+
+    } catch (err) {
       console.error("Erreur dans /setup-sanction-channels :", err);
       if (!interaction.replied) {
         await interaction.reply({
-          content: "Une erreur est survenue, regarde la console.",
+          content: "❌ Une erreur est survenue, regarde la console.",
           flags: EPHEMERAL_FLAG
         });
       }
