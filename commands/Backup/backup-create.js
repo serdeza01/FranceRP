@@ -4,7 +4,6 @@ const db = require("../../db");
 const zlib = require("zlib");
 const { syncUser } = require("../../tasks/users-backup-commands");
 
-
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("backup-create")
@@ -17,8 +16,13 @@ module.exports = {
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     async execute(interaction) {
-        await syncUser(interaction);
         await interaction.deferReply({ ephemeral: true });
+
+        try {
+            await syncUser(interaction);
+        } catch (err) {
+            console.error("Erreur lors de la synchronisation utilisateur :", err);
+        }
 
         const userId = interaction.user.id;
         const guild = interaction.guild;
@@ -31,21 +35,21 @@ module.exports = {
             );
             const compressed = zlib.deflateSync(Buffer.from(jsonString)).toString("base64");
 
-
             const now = new Date();
             const name = customName || `${guild.name} - ${now.toLocaleDateString("fr-FR")}`;
+            const guildName = guild.name;
 
             await db.execute(`
-                INSERT INTO backups (user_id, guild_id, name, data, created_at, automatic)
-                VALUES (?, ?, ?, ?, NOW(), 0)
-            `, [userId, guild.id, name, compressed]);
+                INSERT INTO backups (user_id, guild_id, name, data, created_at, automatic, guild_name)
+                VALUES (?, ?, ?, ?, NOW(), 0, ?)
+            `, [userId, guild.id, name, compressed, guildName]);
 
             return interaction.editReply({
-                content: `✅ Sauvegarde "${name}" créée avec succès.`
+                content: `✅ Sauvegarde **"${name}"** créée avec succès.`
             });
 
         } catch (err) {
-            console.error("Erreur lors de la création du backup:", err);
+            console.error("Erreur lors de la création du backup :", err);
             return interaction.editReply({
                 content: "❌ Une erreur est survenue lors de la sauvegarde du serveur."
             });
@@ -84,7 +88,7 @@ module.exports = {
 
                 console.log(`✅ Auto-backup créé pour ${guild.name}`);
             } catch (err) {
-                console.error(`❌ Erreur backup auto pour ${guild.name}:`, err);
+                console.error(`❌ Erreur backup auto pour ${guild.name} :`, err);
             }
         }
     }
