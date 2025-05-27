@@ -353,31 +353,45 @@ async function updateTicketEmbed(guild, channelId) {
   }
 }
 
-client.once("ready", async () => {
-  runAutoBackups(client);
-  function updateBotStatus() {
-    const totalMembers = client.guilds.cache.reduce(
-      (acc, guild) => acc + guild.memberCount,
-      0
-    );
+function updateBotStatusRotating() {
+  let statusIndex = 0;
+
+  const statuses = [
+    () => ({
+      name: `${client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0)} members`,
+      type: ActivityType.Watching,
+    }),
+    () => ({
+      name: `version 2.0.0`,
+      type: ActivityType.Playing,
+    }),
+    () => ({
+      name: `.gg/rpfrance`,
+      type: ActivityType.Listening,
+    }),
+  ];
+
+  const updateStatus = () => {
+    const presence = statuses[statusIndex % statuses.length]();
     try {
       client.user.setPresence({
-        activities: [
-          {
-            name: `${totalMembers} members`,
-            type: ActivityType.Watching,
-          },
-        ],
+        activities: [presence],
         status: "online",
       });
     } catch (err) {
       console.error("Erreur lors de la mise à jour du statut :", err);
     }
-  }
-  console.log(`Bot connecté en tant que ${client.user.tag}`);
+    statusIndex++;
+  };
 
-  updateBotStatus();
-  setInterval(updateBotStatus, 60000);
+  updateStatus();
+  setInterval(updateStatus, 20000);
+}
+
+client.once("ready", async () => {
+  runAutoBackups(client);
+  console.log(`Bot connecté en tant que ${client.user.tag}`);
+  updateBotStatusRotating();
 
   try {
     await client.application.commands.set(
