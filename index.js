@@ -1,5 +1,5 @@
 require("dotenv").config();
-
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const express = require("express");
 const session = require("express-session");
 const cookieParser = require("cookie-parser");
@@ -28,6 +28,7 @@ const db = require("./db");
 global.database = db;
 
 const PORT = process.env.API_PORT || 8080;
+const { runAutoBackups } = require("./tasks/backupWorker");
 
 const app = express();
 const port = process.env.HEALTH_PORT || 3000;
@@ -353,6 +354,7 @@ async function updateTicketEmbed(guild, channelId) {
 }
 
 client.once("ready", async () => {
+  runAutoBackups(client);
   function updateBotStatus() {
     const totalMembers = client.guilds.cache.reduce(
       (acc, guild) => acc + guild.memberCount,
