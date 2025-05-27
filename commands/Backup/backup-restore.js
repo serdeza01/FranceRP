@@ -129,6 +129,12 @@ module.exports = {
             [backupId, userId, guild.id]
         );
 
+        await db.execute(`
+    INSERT INTO backup_restores (backup_id, user_id, guild_id)
+    VALUES (?, ?, ?)
+`, [backup.id, userId, guild.id]);
+
+
         return interaction.editReply({
             content: `✅ Sauvegarde **${backup.name}** restaurée avec succès !`
         });
