@@ -1,5 +1,5 @@
 require("dotenv").config();
-
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const express = require("express");
 const session = require("express-session");
 const cookieParser = require("cookie-parser");
@@ -19,16 +19,29 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 
-const { sendTicketPanel } = require("./ticketPanel");
+const { sendTicketPanel } = require("./tasks/ticketPanel");
 const {
   updatePresenceEmbed,
   buildPresenceEmbed,
-} = require("./commands/presence");
+} = require("./commands/moderation/presence");
 const db = require("./db");
 global.database = db;
 
-const app = express();
 const PORT = process.env.API_PORT || 8080;
+const { runAutoBackups } = require("./tasks/backupWorker");
+
+const app = express();
+const port = process.env.HEALTH_PORT || 3000;
+
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
+app.listen(port, () => {
+  console.log(`Health endpoint listening on port ${port}`);
+});
+
+
 /*
 app.use(express.json());
 app.use(cookieParser());
@@ -218,21 +231,40 @@ process.on("uncaughtException", (err) => {
 });
 
 client.commands = new Collection();
-const commandsPath = path.join(__dirname, "commands");
-const commandFiles = fs
-  .readdirSync(commandsPath)
-  .filter((file) => file.endsWith(".js"));
 
-for (const file of commandFiles) {
-  const command = require(path.join(commandsPath, file));
-  if (!command.data || !command.data.name) {
-    console.warn(
-      `Le fichier ${file} ne possède pas de propriété data.name. Commande ignorée.`
-    );
-    continue;
+const commandsPath = path.join(__dirname, "commands");
+
+/**
+ * Parcourt récursivement un dossier à la recherche de fichiers .js
+ * et charge chaque commande dans client.commands.
+ * @param {string} dir Le chemin du dossier à scanner
+ */
+function loadCommands(dir) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      loadCommands(fullPath);
+    } else if (entry.isFile() && entry.name.endsWith(".js")) {
+      const command = require(fullPath);
+
+      if (!command.data || !command.data.name) {
+        console.warn(
+          `[WARNING] Le fichier ${fullPath} n’a pas de propriété data.name, commande ignorée.`
+        );
+        continue;
+      }
+
+      client.commands.set(command.data.name, command);
+    }
   }
-  client.commands.set(command.data.name, command);
 }
+
+loadCommands(commandsPath);
+
+console.log(`✅  ${client.commands.size} commandes chargées.`);
 
 global.staffStatus = new Map();
 global.lastMessageId = null;
@@ -321,33 +353,45 @@ async function updateTicketEmbed(guild, channelId) {
   }
 }
 
-client.once("ready", async () => {
-  function updateBotStatus() {
-    const totalMembers = client.guilds.cache.reduce(
-      (acc, guild) => acc + guild.memberCount,
-      0
-    );
-    console.log(`Mise à jour du statut : ${totalMembers} membres.`);
+function updateBotStatusRotating() {
+  let statusIndex = 0;
 
+  const statuses = [
+    () => ({
+      name: `${client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0)} members`,
+      type: ActivityType.Watching,
+    }),
+    () => ({
+      name: `version 2.0.0`,
+      type: ActivityType.Playing,
+    }),
+    () => ({
+      name: `.gg/rpfrance`,
+      type: ActivityType.Listening,
+    }),
+  ];
+
+  const updateStatus = () => {
+    const presence = statuses[statusIndex % statuses.length]();
     try {
       client.user.setPresence({
-        activities: [
-          {
-            name: `${totalMembers} members`,
-            type: ActivityType.Watching,
-          },
-        ],
+        activities: [presence],
         status: "online",
       });
-      console.log("Présence mise à jour");
     } catch (err) {
       console.error("Erreur lors de la mise à jour du statut :", err);
     }
-  }
-  console.log(`Bot connecté en tant que ${client.user.tag}`);
+    statusIndex++;
+  };
 
-  updateBotStatus();
-  setInterval(updateBotStatus, 60000);
+  updateStatus();
+  setInterval(updateStatus, 20000);
+}
+
+client.once("ready", async () => {
+  runAutoBackups(client);
+  console.log(`Bot connecté en tant que ${client.user.tag}`);
+  updateBotStatusRotating();
 
   try {
     await client.application.commands.set(
@@ -681,6 +725,7 @@ client.on("messageCreate", async (message) => {
   }
 
   try {
+    const guildId = message.guild.id;
     const [sanctionConfigRows] = await db.execute(
       "SELECT channel_ids, embed_channel_id FROM sanction_config WHERE guild_id = ?",
       [guildId]
@@ -705,13 +750,11 @@ client.on("messageCreate", async (message) => {
     } else if (/^kick$/i.test(sanctionRaw)) {
       duration = "Kick";
     } else if (durRegex.test(sanctionRaw)) {
-      const parts = sanctionRaw.match(durRegex);
-      const nombre = parts[1];
-      const uniteLetter = parts[2].toUpperCase();
+      const [, nombre, uniteLetter] = sanctionRaw.match(durRegex);
       let unite;
-      if (uniteLetter === "J") unite = "jour(s)";
-      else if (uniteLetter === "M") unite = "mois";
-      else if (uniteLetter === "A") unite = "an(s)";
+      if (uniteLetter.toUpperCase() === "J") unite = "jour(s)";
+      else if (uniteLetter.toUpperCase() === "M") unite = "mois";
+      else unite = "an(s)";
       duration = `${nombre} ${unite}`;
     } else if (/^(perm|permanent)$/i.test(sanctionRaw)) {
       duration = "Permanent";
@@ -719,9 +762,20 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
+    const dateApplication = message.createdAt;
+
     await db.execute(
-      "INSERT INTO sanctions (guild_id, punisher_id, pseudo, raison, duration) VALUES (?, ?, ?, ?, ?)",
-      [guildId, message.author.id, pseudo, raison, duration]
+      `INSERT INTO sanctions
+       (guild_id, punisher_id, pseudo, raison, duration, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        guildId,
+        message.author.id,
+        pseudo,
+        raison,
+        duration,
+        dateApplication
+      ]
     );
 
     const { EmbedBuilder } = require("discord.js");
@@ -731,7 +785,12 @@ client.on("messageCreate", async (message) => {
         { name: "Pseudo", value: pseudo, inline: true },
         { name: "Raison", value: raison, inline: true },
         { name: "Sanction", value: duration, inline: true },
-        { name: "Sanctionné par", value: `<@${message.author.id}>`, inline: true }
+        { name: "Sanctionné par", value: `<@${message.author.id}>`, inline: true },
+        {
+          name: "Date appliquée",
+          value: `<t:${Math.floor(dateApplication.getTime() / 1000)}:F>`,
+          inline: true
+        }
       )
       .setColor(0xff0000)
       .setTimestamp();
@@ -739,9 +798,8 @@ client.on("messageCreate", async (message) => {
     const embedChannel = await message.guild.channels.fetch(
       sanctionConfigRows[0].embed_channel_id
     );
-    if (embedChannel) {
-      embedChannel.send({ embeds: [embed] });
-    }
+    if (embedChannel) embedChannel.send({ embeds: [embed] });
+
   } catch (err) {
     console.error("Erreur lors du traitement des sanctions :", err);
   }
@@ -765,7 +823,7 @@ client.on("interactionCreate", async (interaction) => {
       await command.execute(interaction, client, context);
 
       if (!interaction.alreadyLogged) {
-        const { logCommandUsage } = require("./logSystem");
+        const { logCommandUsage } = require("./tasks/logSystem");
         await logCommandUsage(client, interaction, {
           affected: interaction.channel ? interaction.channel.name : "MP",
         });
@@ -822,7 +880,15 @@ client.on("interactionCreate", async (interaction) => {
   } else if (interaction.isButton()) {
     const buttonHandler = require("./interactionCreate");
     buttonHandler(interaction);
-  }
+  } else if (!interaction.isCommand()) return;
+
+  const commandName = interaction.commandName;
+  const guildId = interaction.guild?.id || "dm";
+
+  await db.execute(
+    "INSERT INTO commands_logs (guild_id, command_name) VALUES (?, ?)",
+    [guildId, commandName]
+  );
 });
 
 (async () => {
