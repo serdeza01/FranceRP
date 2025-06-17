@@ -362,7 +362,7 @@ function updateBotStatusRotating() {
       type: ActivityType.Watching,
     }),
     () => ({
-      name: `version 2.0.2`,
+      name: `version 2.0.3`,
       type: ActivityType.Playing,
     }),
     () => ({
