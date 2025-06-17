@@ -1,6 +1,8 @@
 const { PermissionsBitField } = require("discord.js");
 
 async function generateBackupData(guild) {
+    if (!guild) throw new Error("Guild non défini");
+
     await guild.fetch();
     await guild.roles.fetch();
     await guild.channels.fetch();
@@ -41,24 +43,26 @@ async function generateBackupData(guild) {
             name: channel.name,
             type: channel.type,
             position: channel.position,
-            parent: channel.parentId,
+            parent: channel.parentId || null,
             topic: channel.topic || null,
             nsfw: channel.nsfw || false,
             rateLimitPerUser: channel.rateLimitPerUser || 0,
-            permissionOverwrites: []
+            permissionOverwrites: [],
+            messages: []
         };
 
-        const overwrites = [...channel.permissionOverwrites.cache.values()];
-        for (const overwrite of overwrites) {
-            base.permissionOverwrites.push({
-                id: overwrite.id,
-                type: overwrite.type,
-                allow: overwrite.allow.bitfield.toString(),
-                deny: overwrite.deny.bitfield.toString()
-            });
+        if (channel.permissionOverwrites && channel.permissionOverwrites.cache) {
+            for (const overwrite of channel.permissionOverwrites.cache.values()) {
+                base.permissionOverwrites.push({
+                    id: overwrite.id,
+                    type: overwrite.type,
+                    allow: overwrite.allow.bitfield.toString(),
+                    deny: overwrite.deny.bitfield.toString()
+                });
+            }
         }
 
-        if (channel.isTextBased() && channel.type !== 4) {
+        if (channel.isTextBased && typeof channel.isTextBased === "function" && channel.isTextBased() && channel.messages) {
             try {
                 const messages = await channel.messages.fetch({ limit: 10 });
                 base.messages = messages.map(msg => ({

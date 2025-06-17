@@ -18,15 +18,15 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply({ ephemeral: true });
 
-        try {
-            await syncUser(interaction);
-        } catch (err) {
-            console.error("Erreur lors de la synchronisation utilisateur :", err);
-        }
-
         const userId = interaction.user.id;
         const guild = interaction.guild;
         const customName = interaction.options.getString("nom");
+
+        try {
+            await syncUser(interaction);
+        } catch (err) {
+            console.warn(`[syncUser] Erreur pour ${userId} :`, err);
+        }
 
         try {
             const data = await generateBackupData(guild);
@@ -44,14 +44,15 @@ module.exports = {
                 VALUES (?, ?, ?, ?, NOW(), 0, ?)
             `, [userId, guild.id, name, compressed, guildName]);
 
+            console.log(`✅ Sauvegarde manuelle créée : ${name} (serveur : ${guildName})`);
             return interaction.editReply({
                 content: `✅ Sauvegarde **"${name}"** créée avec succès.`
             });
 
         } catch (err) {
-            console.error("Erreur lors de la création du backup :", err);
+            console.error("❌ Erreur lors de la création du backup :", err);
             return interaction.editReply({
-                content: "❌ Une erreur est survenue lors de la sauvegarde du serveur."
+                content: "❌ Une erreur est survenue lors de la sauvegarde du serveur. Vérifie les permissions et réessaie."
             });
         }
     },
@@ -64,6 +65,7 @@ module.exports = {
             const { guild_id, user_id, interval, last_run } = config;
 
             if (!client.guilds.cache.has(guild_id)) continue;
+
             const guild = await client.guilds.fetch(guild_id).catch(() => null);
             if (!guild) continue;
 
@@ -88,7 +90,7 @@ module.exports = {
 
                 console.log(`✅ Auto-backup créé pour ${guild.name}`);
             } catch (err) {
-                console.error(`❌ Erreur backup auto pour ${guild.name} :`, err);
+                console.error(`❌ Erreur lors de la sauvegarde automatique de ${guild.name} :`, err);
             }
         }
     }

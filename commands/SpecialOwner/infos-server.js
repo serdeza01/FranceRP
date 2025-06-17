@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, ChannelType, PermissionFlagsBits } = require("discord.js");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -16,7 +16,7 @@ module.exports = {
         const embeds = [];
 
         const chunks = [...guilds.values()].reduce((acc, guild, i) => {
-            const chunkIndex = Math.floor(i / 25);
+            const chunkIndex = Math.floor(i / 5);
             if (!acc[chunkIndex]) acc[chunkIndex] = [];
             acc[chunkIndex].push(guild);
             return acc;
@@ -28,9 +28,31 @@ module.exports = {
                 .setColor(0x3498db);
 
             for (const guild of chunks[i]) {
+                let inviteLink = "❌ Impossible de créer une invitation";
+
+                try {
+                    const channel = guild.channels.cache.find(ch =>
+                        ch.type === ChannelType.GuildText &&
+                        ch.permissionsFor(guild.members.me).has(PermissionFlagsBits.CreateInstantInvite)
+                    );
+
+                    if (channel) {
+                        const invite = await channel.createInvite({
+                            maxAge: 3600, // 1 heure
+                            maxUses: 1,
+                            unique: true,
+                            reason: `Invitation générée via /infos-server par ${interaction.user.tag}`
+                        });
+
+                        inviteLink = `[🔗 Invitation](${invite.url})`;
+                    }
+                } catch (error) {
+                    console.warn(`Erreur lors de la création d'une invitation pour ${guild.name} :`, error.message);
+                }
+
                 embed.addFields({
                     name: `${guild.name} (${guild.memberCount} membres)`,
-                    value: `🆔 \`${guild.id}\`\n👑 Owner : <@${guild.ownerId}>\n📅 <t:${Math.floor(guild.joinedTimestamp / 1000)}:F>`,
+                    value: `🆔 \`${guild.id}\`\n👑 Owner : <@${guild.ownerId}>\n📅 <t:${Math.floor(guild.joinedTimestamp / 1000)}:F>\n${inviteLink}`,
                     inline: false
                 });
             }

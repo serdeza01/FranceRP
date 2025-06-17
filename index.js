@@ -252,7 +252,7 @@ function loadCommands(dir) {
 
       if (!command.data || !command.data.name) {
         console.warn(
-          `[WARNING] Le fichier ${fullPath} n’a pas de propriété data.name, commande ignorée.`
+          `[WARNING] Le fichier ${fullPath} n'a pas de propriété data.name, commande ignorée.`
         );
         continue;
       }
@@ -362,7 +362,7 @@ function updateBotStatusRotating() {
       type: ActivityType.Watching,
     }),
     () => ({
-      name: `version 2.0.0`,
+      name: `version 2.0.3`,
       type: ActivityType.Playing,
     }),
     () => ({
@@ -709,8 +709,8 @@ client.on("messageCreate", async (message) => {
 
       if (announce && leveledUp) {
         const embed = new EmbedBuilder()
-          .setTitle("Nouveau Niveau Atteint !")
-          .setDescription(`<@${discordId}> vient d'atteindre le niveau **${level}** !`)
+          .setTitle("Nouveau Niveau Atteint !")
+          .setDescription(`<@${discordId}> vient d'atteindre le niveau **${level}** !`)
           .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
           .setColor("#00FF00")
           .setTimestamp();

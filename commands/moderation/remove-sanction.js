@@ -62,11 +62,19 @@ module.exports = {
         });
       }
 
-      const options = sanctions.map((sanction) => ({
-        label: `Sanction ${sanction.id}`,
-        description: `Raison: ${sanction.raison} – Durée: ${sanction.duration}`,
-        value: sanction.id.toString(),
-      }));
+      function truncate(str, maxLength) {
+        return str.length > maxLength ? str.slice(0, maxLength - 1) + "…" : str;
+      }
+
+      const options = sanctions.map((sanction) => {
+        const fullDescription = `Raison: ${sanction.raison} – Durée: ${sanction.duration}`;
+        return {
+          label: `Sanction ${sanction.id}`,
+          description: truncate(fullDescription, 100),
+          value: sanction.id.toString(),
+        };
+      });
+
 
       const embed = new EmbedBuilder()
         .setTitle("Suppression d'une sanction")
