@@ -731,7 +731,7 @@ client.on("messageCreate", async (message) => {
       [guildId]
     );
     if (sanctionConfigRows.length === 0) return;
-    const channelIds = JSON.parse(sanctionConfigRows[0].channel_ids);
+    const channelIds = JSON.parse(sanctionConfigRows[0].channel_ids || '[]');
     if (!channelIds.includes(message.channel.id)) return;
 
     const regex =
