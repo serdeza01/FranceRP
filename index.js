@@ -146,7 +146,7 @@ function updateBotStatusRotating() {
       type: ActivityType.Watching,
     }),
     () => ({
-      name: `.gg/frenchdonations`,
+      name: `.gg/rpfrance`,
       type: ActivityType.Listening,
     }),
   ];
