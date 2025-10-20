@@ -1,5 +1,6 @@
 require("dotenv").config();
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+console.log(`[DÉBOGAGE BDD] Hôte: ${process.env.DB_HOST}, Base: ${process.env.DB_NAME}, Utilisateur: ${process.env.DB_USER}`);
 const express = require("express");
 const session = require("express-session");
 const cookieParser = require("cookie-parser");
@@ -20,10 +21,6 @@ const path = require("path");
 const axios = require("axios");
 
 const { sendTicketPanel } = require("./tasks/ticketPanel");
-const {
-  updatePresenceEmbed,
-  buildPresenceEmbed,
-} = require("./commands/moderation/presence");
 const db = require("./db");
 global.database = db;
 
@@ -31,7 +28,7 @@ const PORT = process.env.API_PORT || 8080;
 const { runAutoBackups } = require("./tasks/backupWorker");
 
 const app = express();
-const port = process.env.HEALTH_PORT || 3000;
+const port = process.env.HEALTH_PORT || 3001;
 
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
@@ -41,180 +38,33 @@ app.listen(port, () => {
   console.log(`Health endpoint listening on port ${port}`);
 });
 
-
-/*
-app.use(express.json());
-app.use(cookieParser());
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: process.env.NODE_ENV === "production",
-    },
-  })
-);
-
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "PATCH", "DELETE"],
-  })
-);
-
-app.get("/auth", (req, res) => {
-  if (req.session && req.session.accessToken) {
-    res.json({ accessToken: req.session.accessToken });
-  } else {
-    res.status(401).json({ error: "Not authenticated" });
-  }
-});
-
-app.post("/auth/signout", (req, res) => {
-  req.session.destroy((err) => {
-    if (err) return res.status(500).json({ error: "Signout failed" });
-    res.json({ message: "Signed out" });
-  });
-});
-
-const getGuild = async (guildId) => {
-  let guild = client.guilds.cache.get(guildId);
-  if (!guild) {
-    try {
-      guild = await client.guilds.fetch(guildId);
-    } catch (err) {
-      throw new Error("Guild not found");
-    }
-  }
-  return guild;
-};
-
-const guildFeatures = {};
-
-const httpsOptions = {
-  key: fs.readFileSync("./key.pem"),
-  cert: fs.readFileSync("./cert.pem"),
-};
-
-app.get("/guilds/:guild", async (req, res) => {
-  const guildId = req.params.guild;
-  try {
-    const guild = await getGuild(guildId);
-    const guildInfo = {
-      id: guild.id,
-      name: guild.name,
-      icon: guild.iconURL({ dynamic: true }),
-      memberCount: guild.memberCount,
-    };
-    res.json(guildInfo);
-  } catch (error) {
-    res.status(404).json({ error: "Guild not found" });
-  }
-});
-
-app.get("/guilds/:guild/features/:feature", (req, res) => {
-  const { guild, feature } = req.params;
-  const featuresConfig = guildFeatures[guild] || {};
-  if (featuresConfig[feature]) {
-    res.json(featuresConfig[feature]);
-  } else {
-    res.status(404).json({ error: "Feature not enabled or not found" });
-  }
-});
-
-app.patch("/guilds/:guild/features/:feature", (req, res) => {
-  const { guild, feature } = req.params;
-  const options = req.body;
-  if (!guildFeatures[guild] || !guildFeatures[guild][feature]) {
-    return res.status(404).json({ error: "Feature not enabled" });
-  }
-  guildFeatures[guild][feature].options = {
-    ...guildFeatures[guild][feature].options,
-    ...options,
-  };
-  res.json(guildFeatures[guild][feature]);
-});
-
-app.post("/guilds/:guild/features/:feature", (req, res) => {
-  const { guild, feature } = req.params;
-  const options = req.body || {};
-  if (!guildFeatures[guild]) {
-    guildFeatures[guild] = {};
-  }
-  guildFeatures[guild][feature] = {
-    enabled: true,
-    options: options,
-  };
-  res.json(guildFeatures[guild][feature]);
-});
-
-app.delete("/guilds/:guild/features/:feature", (req, res) => {
-  const { guild, feature } = req.params;
-  if (guildFeatures[guild] && guildFeatures[guild][feature]) {
-    delete guildFeatures[guild][feature];
-    res.json({ message: "Feature disabled" });
-  } else {
-    res.status(404).json({ error: "Feature not enabled" });
-  }
-});
-
-app.get("/guilds/:guild/roles", async (req, res) => {
-  const guildId = req.params.guild;
-  try {
-    const guild = await getGuild(guildId);
-    const roles = guild.roles.cache.map((r) => ({
-      id: r.id,
-      name: r.name,
-      color: r.color,
-      permissions: r.permissions.serialize(),
-    }));
-    res.json(roles);
-  } catch (error) {
-    res.status(404).json({ error: "Guild not found" });
-  }
-});
-
-app.get("/guilds/:guild/channels", async (req, res) => {
-  const guildId = req.params.guild;
-  try {
-    const guild = await getGuild(guildId);
-    const channels = guild.channels.cache.map((c) => ({
-      id: c.id,
-      name: c.name,
-      type: c.type,
-    }));
-    res.json(channels);
-  } catch (error) {
-    res.status(404).json({ error: "Guild not found" });
-  }
-});
-
-https.createServer(httpsOptions, app).listen(PORT, () => {
-  console.log(`Serveur HTTPS lancé sur le port ${PORT}`);
-});
-*/
 async function initDatabase() {
   try {
     await db.execute(
       `CREATE TABLE IF NOT EXISTS presence_embed (
-          channel_id VARCHAR(255) PRIMARY KEY,
-          message_id VARCHAR(255)
-        )`
+                channel_id VARCHAR(255) PRIMARY KEY,
+                message_id VARCHAR(255)
+            )`
     );
 
     await db.execute(
       `CREATE TABLE IF NOT EXISTS user_roblox (
-          discord_id VARCHAR(255) PRIMARY KEY,
-          roblox_username VARCHAR(255),
-          roblox_id VARCHAR(255)
-        )`
+                discord_id VARCHAR(255) PRIMARY KEY,
+                roblox_username VARCHAR(255),
+                roblox_id VARCHAR(255)
+            )`
     );
 
     console.log("Tables créées (si elles n'existaient pas déjà)");
   } catch (error) {
     console.error("Erreur lors de l'initialisation de la DB:", error);
   }
+}
+
+function updatePresenceEmbedMessage() {
+  console.log(
+    "AVERTISSEMENT : La fonction updatePresenceEmbedMessage a été appelé mais n'est pas active."
+  );
 }
 
 const client = new Client({
@@ -234,11 +84,6 @@ client.commands = new Collection();
 
 const commandsPath = path.join(__dirname, "commands");
 
-/**
- * Parcourt récursivement un dossier à la recherche de fichiers .js
- * et charge chaque commande dans client.commands.
- * @param {string} dir Le chemin du dossier à scanner
- */
 function loadCommands(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
 
@@ -272,73 +117,9 @@ global.ticketAuthorizedRoles = new Set();
 global.ticketAuthorizedUsers = new Set();
 global.reactionChannels = new Set();
 
-const STAFF_ROLE_ID = "1304151263851708458";
+const STAFF_ROLE_ID = "1427200751855210566";
 const CHANNEL_ID = "1337086501778882580";
 const staffUsernames = [];
-
-async function updatePresenceEmbedMessage(guild, channelId) {
-  try {
-    const availableStaff = [];
-    const channel = await client.channels.fetch(channelId);
-
-    for (const [userId, status] of global.staffStatus) {
-      if (status === "disponible") {
-        try {
-          const member = await client.users.fetch(userId);
-          const guildMember = await guild.members.fetch(member.id);
-          availableStaff.push(`- ${guildMember.displayName}`);
-        } catch (error) {
-          console.warn(`Impossible de récupérer le membre ${userId}`);
-        }
-      }
-    }
-
-    const file = new AttachmentBuilder("./image.png");
-    const embed = new EmbedBuilder()
-      .setColor(0x00ff00)
-      .setTitle("Statut des Staffs disponibles en jeu")
-      .setTimestamp()
-      .setThumbnail("attachment://image.png")
-      .addFields({
-        name: "Disponibles",
-        value: availableStaff.join("\n") || "Aucun",
-        inline: false,
-      });
-
-    let sentMessage;
-    const channelObj = await client.channels.fetch(channelId);
-    if (global.lastMessageId) {
-      sentMessage = await channelObj.messages
-        .fetch(global.lastMessageId)
-        .catch(() => null);
-      if (sentMessage) {
-        await sentMessage.edit({ embeds: [embed], files: [file] });
-      }
-    }
-
-    if (!global.lastMessageId || !sentMessage) {
-      const newMessage = await channelObj.send({
-        embeds: [embed],
-        files: [file],
-      });
-      global.lastMessageId = newMessage.id;
-
-      await db.promise().execute(
-        `
-        INSERT INTO presence_embed (channel_id, message_id) 
-        VALUES (?, ?)
-        ON DUPLICATE KEY UPDATE message_id = VALUES(message_id)
-      `,
-        [channelId, newMessage.id]
-      );
-      return newMessage;
-    }
-
-    return sentMessage;
-  } catch (error) {
-    console.error("Erreur lors de la mise à jour de l'embed :", error);
-  }
-}
 
 async function updateTicketEmbed(guild, channelId) {
   try {
@@ -358,15 +139,14 @@ function updateBotStatusRotating() {
 
   const statuses = [
     () => ({
-      name: `${client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0)} members`,
+      name: `${client.guilds.cache.reduce(
+        (acc, guild) => acc + guild.memberCount,
+        0
+      )} members`,
       type: ActivityType.Watching,
     }),
     () => ({
-      name: `version 2.0.3`,
-      type: ActivityType.Playing,
-    }),
-    () => ({
-      name: `.gg/rpfrance`,
+      name: `.gg/frenchdonations`,
       type: ActivityType.Listening,
     }),
   ];
@@ -395,28 +175,12 @@ client.once("ready", async () => {
 
   try {
     await client.application.commands.set(
-      client.commands.map((command) => command.data),
-      //"871053612971864064"
+      client.commands.map((command) => command.data)
     );
     console.log("Commandes enregistrées globalement !");
   } catch (error) {
     console.error(
       "Erreur lors de l'enregistrement des commandes globales :",
-      error
-    );
-  }
-
-  try {
-    const [rows] = await db.execute(
-      `SELECT message_id FROM presence_embed WHERE channel_id = ?`,
-      [CHANNEL_ID]
-    );
-    if (rows && rows.length > 0 && rows[0].message_id) {
-      global.lastMessageId = rows[0].message_id;
-    }
-  } catch (error) {
-    console.error(
-      "Erreur lors de la récupération de l'embed de présence en BDD :",
       error
     );
   }
@@ -434,92 +198,18 @@ client.once("ready", async () => {
         global.staffStatus.set(member.id, "disponible");
       }
     }
-
-    const channel = await guild.channels.fetch(CHANNEL_ID);
-    let presenceMessage;
-    if (!global.lastMessageId) {
-      presenceMessage = await updatePresenceEmbedMessage(guild, CHANNEL_ID);
-    } else {
-      try {
-        presenceMessage = await channel.messages.fetch(global.lastMessageId);
-      } catch (err) {
-        console.error(
-          "L'embed stocké en BDD est introuvable. Création d'un nouvel embed..."
-        );
-        presenceMessage = await updatePresenceEmbedMessage(guild, CHANNEL_ID);
-      }
-    }
-    const newEmbed = await buildPresenceEmbed();
-    if (presenceMessage) {
-      await presenceMessage.edit({ embeds: [newEmbed] });
-    }
   } catch (error) {
-    console.error(
-      "Erreur lors de la récupération des membres ou mise à jour de l'embed :",
-      error
-    );
+    console.error("Erreur lors de la récupération des membres :", error);
+  }
+
+  try {
+    const { startApi } = require("./server.js");
+    startApi(client);
+  } catch (error) {
+    console.error("Erreur lors du démarrage du serveur API :", error);
   }
 
   await sendTicketPanel(client);
-
-  async function sendStaffPresenceReminderDM() {
-    try {
-      const [configRows] = await db.execute(
-        "SELECT guild_id FROM dm_config WHERE type = 'staff_presence' AND active = TRUE"
-      );
-
-      if (configRows.length === 0) {
-        return;
-      }
-
-      for (const config of configRows) {
-        try {
-          const guild = await client.guilds.fetch(config.guild_id).catch(() => null);
-          if (!guild) continue;
-
-          const [staffRows] = await db.execute(
-            "SELECT user_id FROM staff_presence WHERE guild_id = ? AND present = TRUE",
-            [config.guild_id]
-          );
-
-          if (staffRows.length === 0) continue;
-
-          for (const staff of staffRows) {
-            try {
-              const user = await client.users.fetch(staff.user_id);
-              if (user) {
-                await user.send(
-                  `Attention ! Sur le serveur **${guild.name}**, n'oublie pas d'enlever ta présence en tant que staff ! Utilise la commande \`/presence\` pour mettre à jour ton statut.`
-                );
-              }
-            } catch (err) {
-              console.error(
-                `Impossible d'envoyer un DM à l'utilisateur ${staff.user_id} pour le serveur ${guild.name} :`,
-                err
-              );
-            }
-          }
-        } catch (guildError) {
-          console.error(
-            `Erreur lors du traitement du serveur avec l'ID ${config.guild_id} :`,
-            guildError
-          );
-        }
-      }
-    } catch (error) {
-      console.error("Erreur lors de l'envoi des rappels DM :", error);
-    }
-  }
-  schedule.scheduleJob({ hour: 1, minute: 0, tz: "Europe/Paris" }, () => {
-    console.log("Lancement de l'envoi des rappels DM de présence staff à 1h00.");
-    sendStaffPresenceReminderDM();
-  });
-
-  schedule.scheduleJob({ hour: 8, minute: 30, tz: "Europe/Paris" }, () => {
-    console.log("Lancement de l'envoi des rappels DM de présence staff à 8h30.");
-    sendStaffPresenceReminderDM();
-  });
-
 });
 
 client.on("messageCreate", async (message) => {
@@ -546,13 +236,9 @@ client.on("messageCreate", async (message) => {
       const spamKey = `${guildId}-${discordId}`;
       let timestamps = global.spamMap.get(spamKey) || [];
       timestamps.push(now);
-      const spamTimeFrame = 7000; // 7 secondes
+      const spamTimeFrame = 7000;
       timestamps = timestamps.filter((ts) => now - ts < spamTimeFrame);
       global.spamMap.set(spamKey, timestamps);
-
-      console.log(
-        `[AntiSpam] ${spamKey} a ${timestamps.length} messages dans ${spamTimeFrame}ms.`
-      );
 
       const spamThreshold = 5;
       if (timestamps.length >= spamThreshold) {
@@ -567,7 +253,10 @@ client.on("messageCreate", async (message) => {
             await message.channel.bulkDelete(messagesToDelete, true);
           }
         } catch (err) {
-          console.error("Erreur lors de la suppression des messages spam :", err);
+          console.error(
+            "Erreur lors de la suppression des messages spam :",
+            err
+          );
         }
 
         try {
@@ -606,13 +295,15 @@ client.on("messageCreate", async (message) => {
                   "UPDATE antispam_records SET kicks = ? WHERE guild_id = ? AND user_id = ?",
                   [kicks, guildId, discordId]
                 );
-                try {
-                  await message.author.send(
+                await member
+                  .send(
                     `Vous avez été **kick** du serveur \`${message.guild.name}\` pour spam excessif (3 warns atteints).`
+                  )
+                  .catch(() =>
+                    console.error(
+                      "Impossible d'envoyer un DM à l'utilisateur kick."
+                    )
                   );
-                } catch (err) {
-                  console.error("Impossible d'envoyer un DM à l'utilisateur kick.");
-                }
                 message.channel.send(
                   `<@${discordId}> a été **kick** pour spam (3 warns).`
                 );
@@ -627,13 +318,15 @@ client.on("messageCreate", async (message) => {
                 await member.ban({
                   reason: "Anti-spam : accumulation de 3 warns et 2 kicks",
                 });
-                try {
-                  await message.author.send(
+                await member
+                  .send(
                     `Vous avez été **banni** du serveur \`${message.guild.name}\` pour spam excessif (3 warns et 2 kicks accumulés).`
+                  )
+                  .catch(() =>
+                    console.error(
+                      "Impossible d'envoyer un DM à l'utilisateur banni."
+                    )
                   );
-                } catch (err) {
-                  console.error("Impossible d'envoyer un DM à l'utilisateur banni.");
-                }
                 message.channel.send(
                   `<@${discordId}> a été **banni** pour spam excessif.`
                 );
@@ -649,75 +342,70 @@ client.on("messageCreate", async (message) => {
       }
     }
   } catch (err) {
-    console.error("Erreur lors de la lecture de la configuration anti-spam :", err);
+    console.error(
+      "Erreur lors de la lecture de la configuration anti-spam :",
+      err
+    );
   }
-
-  if (!global.lastMessageTimestamps) global.lastMessageTimestamps = {};
-  const xpKey = `${guildId}-${discordId}`;
-  if (
-    global.lastMessageTimestamps[xpKey] &&
-    now - global.lastMessageTimestamps[xpKey] < 10000
-  ) {
-    return;
-  }
-  global.lastMessageTimestamps[xpKey] = now;
-
-  const xpEarned = Math.max(1, Math.floor(message.content.length / 10));
 
   try {
-    await db.execute(
-      `INSERT INTO user_levels (guild_id, discord_id, xp, level)
-     VALUES (?, ?, ?, 1)
-     ON DUPLICATE KEY UPDATE xp = xp + ?`,
-      [guildId, discordId, xpEarned, xpEarned]
-    );
-
-    const [rows] = await db.execute(
-      "SELECT xp, level FROM user_levels WHERE guild_id = ? AND discord_id = ?",
-      [guildId, discordId]
-    );
-
-    if (rows.length > 0) {
-      let { xp, level } = rows[0];
-
-      let xpThreshold = Math.floor(13.3 * Math.pow(level, 2));
-      let leveledUp = false;
-
-      while (xp >= xpThreshold) {
-        xp -= xpThreshold;
-        level++;
-        leveledUp = true;
-        xpThreshold = Math.floor(13.3 * Math.pow(level, 2));
-      }
+    if (!global.lastMessageTimestamps) global.lastMessageTimestamps = {};
+    const xpKey = `${guildId}-${discordId}`;
+    if (
+      global.lastMessageTimestamps[xpKey] &&
+      now - global.lastMessageTimestamps[xpKey] < 10000
+    ) {
+    } else {
+      global.lastMessageTimestamps[xpKey] = now;
+      const xpEarned = Math.max(1, Math.floor(message.content.length / 10));
 
       await db.execute(
-        "UPDATE user_levels SET xp = ?, level = ? WHERE guild_id = ? AND discord_id = ?",
-        [xp, level, guildId, discordId]
+        `INSERT INTO user_levels (guild_id, discord_id, xp, level) VALUES (?, ?, ?, 1) ON DUPLICATE KEY UPDATE xp = xp + ?`,
+        [guildId, discordId, xpEarned, xpEarned]
       );
 
-      const [configRows] = await db.execute(
-        "SELECT system_enabled, announce_enabled, announce_channel FROM level_config WHERE guild_id = ?",
-        [guildId]
+      const [rows] = await db.execute(
+        "SELECT xp, level FROM user_levels WHERE guild_id = ? AND discord_id = ?",
+        [guildId, discordId]
       );
+      if (rows.length > 0) {
+        let { xp, level } = rows[0];
+        let xpThreshold = Math.floor(13.3 * Math.pow(level, 2));
+        let leveledUp = false;
+        while (xp >= xpThreshold) {
+          xp -= xpThreshold;
+          level++;
+          leveledUp = true;
+          xpThreshold = Math.floor(13.3 * Math.pow(level, 2));
+        }
+        await db.execute(
+          "UPDATE user_levels SET xp = ?, level = ? WHERE guild_id = ? AND discord_id = ?",
+          [xp, level, guildId, discordId]
+        );
+        const [configRows] = await db.execute(
+          "SELECT system_enabled, announce_enabled, announce_channel FROM level_config WHERE guild_id = ?",
+          [guildId]
+        );
 
-      let announce = false;
-      let announceChannelId = null;
-      if (configRows.length > 0 && configRows[0].system_enabled) {
-        announce = configRows[0].announce_enabled;
-        announceChannelId = configRows[0].announce_channel;
-      }
-
-      if (announce && leveledUp) {
-        const embed = new EmbedBuilder()
-          .setTitle("Nouveau Niveau Atteint !")
-          .setDescription(`<@${discordId}> vient d'atteindre le niveau **${level}** !`)
-          .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
-          .setColor("#00FF00")
-          .setTimestamp();
-
-        let channel =
-          message.guild.channels.cache.get(announceChannelId) || message.channel;
-        channel.send({ embeds: [embed] });
+        if (
+          configRows.length > 0 &&
+          configRows[0].system_enabled &&
+          configRows[0].announce_enabled &&
+          leveledUp
+        ) {
+          const embed = new EmbedBuilder()
+            .setTitle("Nouveau Niveau Atteint !")
+            .setDescription(
+              `<@${discordId}> vient d'atteindre le niveau **${level}** !`
+            )
+            .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
+            .setColor("#00FF00")
+            .setTimestamp();
+          let channel =
+            message.guild.channels.cache.get(configRows[0].announce_channel) ||
+            message.channel;
+          channel.send({ embeds: [embed] });
+        }
       }
     }
   } catch (err) {
@@ -725,13 +413,32 @@ client.on("messageCreate", async (message) => {
   }
 
   try {
-    const guildId = message.guild.id;
     const [sanctionConfigRows] = await db.execute(
       "SELECT channel_ids, embed_channel_id FROM sanction_config WHERE guild_id = ?",
-      [guildId]
+      [message.guild.id]
     );
+
     if (sanctionConfigRows.length === 0) return;
-    const channelIds = JSON.parse(sanctionConfigRows[0].channel_ids || '[]');
+
+    let channelIds = [];
+    const dbValue = sanctionConfigRows[0].channel_ids;
+    if (dbValue) {
+      if (Array.isArray(dbValue)) {
+        channelIds = dbValue;
+      } else if (typeof dbValue === "string") {
+        try {
+          const parsedData = JSON.parse(dbValue);
+          if (Array.isArray(parsedData)) {
+            channelIds = parsedData;
+          }
+        } catch (e) {
+          console.error(
+            `[Sanctions] Donnée channel_ids invalide pour guild ${message.guild.id}, impossible de parser :`,
+            dbValue
+          );
+        }
+      }
+    }
     if (!channelIds.includes(message.channel.id)) return;
 
     const regex =
@@ -749,6 +456,8 @@ client.on("messageCreate", async (message) => {
       duration = "Warn";
     } else if (/^kick$/i.test(sanctionRaw)) {
       duration = "Kick";
+    } else if (/^mute$/i.test(sanctionRaw)) {
+      duration = "Mute";
     } else if (durRegex.test(sanctionRaw)) {
       const [, nombre, uniteLetter] = sanctionRaw.match(durRegex);
       let unite;
@@ -766,30 +475,33 @@ client.on("messageCreate", async (message) => {
 
     await db.execute(
       `INSERT INTO sanctions
-       (guild_id, punisher_id, pseudo, raison, duration, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+               (guild_id, punisher_id, pseudo, raison, duration, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)`,
       [
-        guildId,
+        message.guild.id,
         message.author.id,
         pseudo,
         raison,
         duration,
-        dateApplication
+        dateApplication,
       ]
     );
 
-    const { EmbedBuilder } = require("discord.js");
     const embed = new EmbedBuilder()
       .setTitle("Sanction enregistrée")
       .addFields(
         { name: "Pseudo", value: pseudo, inline: true },
         { name: "Raison", value: raison, inline: true },
         { name: "Sanction", value: duration, inline: true },
-        { name: "Sanctionné par", value: `<@${message.author.id}>`, inline: true },
+        {
+          name: "Sanctionné par",
+          value: `<@${message.author.id}>`,
+          inline: true,
+        },
         {
           name: "Date appliquée",
           value: `<t:${Math.floor(dateApplication.getTime() / 1000)}:F>`,
-          inline: true
+          inline: true,
         }
       )
       .setColor(0xff0000)
@@ -799,7 +511,6 @@ client.on("messageCreate", async (message) => {
       sanctionConfigRows[0].embed_channel_id
     );
     if (embedChannel) embedChannel.send({ embeds: [embed] });
-
   } catch (err) {
     console.error("Erreur lors du traitement des sanctions :", err);
   }
@@ -814,7 +525,8 @@ client.on("interactionCreate", async (interaction) => {
         STAFF_ROLE_ID,
         ticketAuthorizedRoles: global.ticketAuthorizedRoles,
         ticketAuthorizedUsers: global.ticketAuthorizedUsers,
-        updateTicketEmbed: () => updateTicketEmbed(interaction.guild, interaction.channelId),
+        updateTicketEmbed: () =>
+          updateTicketEmbed(interaction.guild, interaction.channelId),
         staffStatus: global.staffStatus,
         updatePresenceEmbed: updatePresenceEmbedMessage,
         CHANNEL_ID,
@@ -831,10 +543,17 @@ client.on("interactionCreate", async (interaction) => {
       }
     } catch (error) {
       console.error(error);
-      await interaction.reply({
-        content: "Une erreur est survenue.",
-        flags: 1 << 6,
-      });
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({
+          content: "Une erreur est survenue.",
+          ephemeral: true,
+        });
+      } else {
+        await interaction.reply({
+          content: "Une erreur est survenue.",
+          ephemeral: true,
+        });
+      }
     }
   } else if (interaction.isModalSubmit()) {
     if (interaction.customId === "connectRobloxModal") {
@@ -850,30 +569,25 @@ client.on("interactionCreate", async (interaction) => {
           return interaction.reply({
             content:
               "Compte Roblox introuvable. Vérifie bien le nom d'utilisateur.",
-            flags: 1 << 6,
+            ephemeral: true,
           });
         }
         const robloxId = response.data.Id;
         await db.promise().execute(
-          `
-          INSERT INTO user_roblox (discord_id, roblox_username, roblox_id) 
-          VALUES (?, ?, ?)
-          ON DUPLICATE KEY UPDATE 
-            roblox_username = VALUES(roblox_username),
-            roblox_id = VALUES(roblox_id)
-        `,
+          `INSERT INTO user_roblox (discord_id, roblox_username, roblox_id) VALUES (?, ?, ?)
+                     ON DUPLICATE KEY UPDATE roblox_username = VALUES(roblox_username), roblox_id = VALUES(roblox_id)`,
           [discordId, username, robloxId]
         );
         await interaction.reply({
           content: `Ton compte Roblox **${username}** (ID: ${robloxId}) a été associé à ton compte Discord !`,
-          flags: 1 << 6,
+          ephemeral: true,
         });
       } catch (error) {
         console.error("Erreur lors de la connexion du compte Roblox :", error);
         await interaction.reply({
           content:
             "Erreur lors de la connexion du compte Roblox. Réessayez plus tard.",
-          flags: 1 << 6,
+          ephemeral: true,
         });
       }
     }
@@ -885,10 +599,22 @@ client.on("interactionCreate", async (interaction) => {
   const commandName = interaction.commandName;
   const guildId = interaction.guild?.id || "dm";
 
-  await db.execute(
-    "INSERT INTO commands_logs (guild_id, command_name) VALUES (?, ?)",
-    [guildId, commandName]
-  );
+  try {
+    const commandName = interaction.commandName;
+    const guildId = interaction.guild?.id || "dm";
+
+    if (commandName && guildId) {
+      await db.execute(
+        "INSERT INTO commands_logs (guild_id, command_name) VALUES (?, ?)",
+        [guildId, commandName]
+      );
+    }
+  } catch (logError) {
+    console.error(
+      "Erreur non-critique lors du logging de la commande :",
+      logError.sqlMessage || logError.message
+    );
+  }
 });
 
 (async () => {
