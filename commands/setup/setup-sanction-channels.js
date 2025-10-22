@@ -16,35 +16,71 @@ async function scanAndRegisterSanctions(channel, embedChannel, guildId) {
         }
         return;
     }
-    const regex = /^Pseudo\s*:\s*(.+)\nRaison\s*:\s*(.+)\nSanction\s*:\s*(.+)$/i;
-    let lastId = null;
-    while (true) {
-        const options = { limit: 100 };
-        if (lastId) options.before = lastId;
-        const fetched = await channel.messages.fetch(options);
-        if (!fetched.size) break;
-        lastId = fetched.last().id;
-        for (const message of fetched.values()) {
-            const m = message.content.match(regex);
-            if (!m) continue;
-            const [, pseudoRaw, raisonRaw, sanctionRaw] = m;
-            const pseudo = pseudoRaw.trim();
-            const raison = raisonRaw.trim();
-            let duration = "";
-            const durRegex = /^(\d+)\s*([JMA])$/i;
-            if (/^warn$/i.test(sanctionRaw)) duration = "Warn";
-            else if (/^kick$/i.test(sanctionRaw)) duration = "Kick";
-            else if (durRegex.test(sanctionRaw)) {
-                const [, n, u] = sanctionRaw.match(durRegex);
-                const unite = u.toUpperCase() === "J" ? "jour(s)" : u.toUpperCase() === "M" ? "mois" : "an(s)";
-                duration = `${n} ${unite}`;
-            } else if (/^(perm|permanent)$/i.test(sanctionRaw)) duration = "Permanent";
-            else continue;
-            const dateApplication = message.createdAt;
-            await db.execute(`INSERT INTO sanctions (guild_id, punisher_id, pseudo, raison, duration, created_at) VALUES (?, ?, ?, ?, ?, ?)`, [guildId, message.author.id, pseudo, raison, duration, dateApplication]);
-            const embed = new EmbedBuilder().setTitle("Nouvelle sanction enregistrée").addFields({ name: "Sanctionné par", value: `<@${message.author.id}>`, inline: true }, { name: "Pseudo", value: pseudo, inline: true }, { name: "Raison", value: raison, inline: true }, { name: "Durée", value: duration, inline: true }, { name: "Date", value: dateApplication.toLocaleString(), inline: true }).setColor("Red").setTimestamp();
-            await embedChannel.send({ embeds: [embed] });
-        }
+    return;
+  }
+
+  const regex = /^Pseudo\s*:\s*(.+)\nRaison\s*:\s*(.+)\nSanction\s*:\s*([\w\s]+)[\s\S]*$/i;
+  let lastId = null;
+
+  while (true) {
+    const options = { limit: 100 };
+    if (lastId) options.before = lastId;
+    const fetched = await channel.messages.fetch(options);
+    if (!fetched.size) break;
+    lastId = fetched.last().id;
+
+    for (const message of fetched.values()) {
+      const m = message.content.match(regex);
+      if (!m) continue;
+
+      const [, pseudoRaw, raisonRaw, sanctionRaw] = m;
+      const pseudo = pseudoRaw.trim();
+      const raison = raisonRaw.trim();
+      let duration = "";
+      const durRegex = /^(\d+)\s*([JMA])$/i;
+
+      if (/^warn$/i.test(sanctionRaw)) duration = "Warn";
+      else if (/^kick$/i.test(sanctionRaw)) duration = "Kick";
+      else if (durRegex.test(sanctionRaw)) {
+        const [, n, u] = sanctionRaw.match(durRegex);
+        const unite =
+          u.toUpperCase() === "J" ? "jour(s)" :
+            u.toUpperCase() === "M" ? "mois" :
+              "an(s)";
+        duration = `${n} ${unite}`;
+      }
+      else if (/^(perm|permanent)$/i.test(sanctionRaw)) duration = "Permanent";
+      else continue;
+
+      const dateApplication = message.createdAt;
+
+      await db.execute(
+        `INSERT INTO sanctions
+           (guild_id, punisher_id, pseudo, raison, duration, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          guildId,
+          message.author.id,
+          pseudo,
+          raison,
+          duration,
+          dateApplication
+        ]
+      );
+
+      const embed = new EmbedBuilder()
+        .setTitle("Nouvelle sanction enregistrée")
+        .addFields(
+          { name: "Sanctionné par", value: `<@${message.author.id}>`, inline: true },
+          { name: "Pseudo", value: pseudo, inline: true },
+          { name: "Raison", value: raison, inline: true },
+          { name: "Durée", value: duration, inline: true },
+          { name: "Date", value: dateApplication.toLocaleString(), inline: true }
+        )
+        .setColor("Red")
+        .setTimestamp();
+
+      await embedChannel.send({ embeds: [embed] });
     }
 }
 

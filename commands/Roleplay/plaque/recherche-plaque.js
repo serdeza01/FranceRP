@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const db = require("../../db");
+const db = require("../../../db");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -31,22 +31,25 @@ module.exports = {
         if (plaqueData.guild_id !== guildId && !link) {
             return interaction.reply({ content: "❌ Cette plaque n'est pas accessible depuis ce serveur.", ephemeral: true });
         }
+        let character = null;
+        let user = null;
 
-        const [characterRows] = await db.execute(`
-            SELECT job1, job2 FROM \`characters\`
-            WHERE user_id = ? AND guild_id = ? AND LOWER(name) LIKE LOWER(?)
-        `, [plaqueData.user_id, plaqueData.guild_id, `%${plaqueData.nom}%`]);
+        if (plaqueData.user_id) {
+            const [characterRows] = await db.execute(`
+                SELECT job1, job2 FROM \`characters\`
+                WHERE user_id = ? AND guild_id = ? AND LOWER(name) LIKE LOWER(?)
+            `, [plaqueData.user_id, plaqueData.guild_id, `%${plaqueData.nom}%`]);
+            character = characterRows[0];
 
-        const character = characterRows[0];
-
-        const user = await interaction.client.users.fetch(plaqueData.user_id).catch(() => null);
-
+            user = await interaction.client.users.fetch(plaqueData.user_id).catch(() => null);
+        }
+        
         const embed = new EmbedBuilder()
             .setTitle(`🔎 Résultat pour la plaque ${plaque}`)
             .setColor(0x00B0F4)
             .addFields(
                 { name: "Nom", value: `${plaqueData.prenom} ${plaqueData.nom}`, inline: true },
-                { name: "Adresse mail", value: user ? user.tag : "Inconnu", inline: true },
+                { name: "Utilisateur Discord", value: user ? user.tag : (plaqueData.user_id ? "Inconnu" : "Non spécifié"), inline: true },
                 { name: "Jobs", value: character ? `${character.job1 || "Aucun"} / ${character.job2 || "Aucun"}` : "Aucun", inline: false }
             )
             .setFooter({ text: "Données récupérées avec succès" });

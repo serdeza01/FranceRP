@@ -442,7 +442,7 @@ client.on("messageCreate", async (message) => {
     if (!channelIds.includes(message.channel.id)) return;
 
     const regex =
-      /^Pseudo\s*:\s*(.+)\nRaison\s*:\s*(.+)\nSanction\s*:\s*(.+)$/i;
+      /^Pseudo\s*:\s*(.+)\nRaison\s*:\s*(.+)\nSanction\s*:\s*([\w\s]+)[\s\S]*$/i;
     const match = message.content.match(regex);
     if (!match) return;
 
