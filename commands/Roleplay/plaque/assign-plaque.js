@@ -70,10 +70,7 @@ module.exports = {
     }
 
     await db.execute(
-      `
-            INSERT INTO plaque_registry (plaque, user_id, prenom, nom, guild_id)
-            VALUES (?, ?, ?, ?, ?)
-        `,
+      `INSERT INTO plaque_registry (plaque, user_id, prenom, nom, guild_id) VALUES (?, ?, ?, ?, ?)`,
       [plaque, userId, prenom, nom.toUpperCase(), guildId]
     );
 
