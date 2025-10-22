@@ -60,15 +60,22 @@ module.exports = {
             .setColor(0x3498db);
 
         for (const plaque of plaques) {
-            const [[character]] = await db.execute(`
-                SELECT job1, job2 FROM \`characters\` 
-                WHERE user_id = ? AND guild_id = ? AND LOWER(name) LIKE LOWER(?)
-            `, [plaque.user_id, plaque.guild_id, `%${plaque.nom}%`]);
+            let character = null;
+            let user = null;
 
-            const user = await interaction.client.users.fetch(plaque.user_id).catch(() => null);
+            if (plaque.user_id) {
+                const [[char]] = await db.execute(`
+                    SELECT job1, job2 FROM \`characters\` 
+                    WHERE user_id = ? AND guild_id = ? AND LOWER(name) LIKE LOWER(?)
+                `, [plaque.user_id, plaque.guild_id, `%${plaque.nom}%`]);
+                character = char;
+
+                user = await interaction.client.users.fetch(plaque.user_id).catch(() => null);
+            }
+
             embed.addFields({
                 name: `Plaque : ${plaque.plaque}`,
-                value: `👤 **Utilisateur :** ${user ? user.tag : "Inconnu"}\n🧰 **Jobs :** ${character ? `${character.job1 || "Aucun"} / ${character.job2 || "Aucun"}` : "Aucun"}\n🆔 **Serveur :** ${plaque.guild_id}`,
+                value: `👤 **Utilisateur :** ${user ? user.tag : (plaque.user_id ? "Inconnu" : "Non spécifié")}\n🧰 **Jobs :** ${character ? `${character.job1 || "Aucun"} / ${character.job2 || "Aucun"}` : "Aucun"}\n🆔 **Serveur :** ${plaque.guild_id}`,
                 inline: false
             });
         }

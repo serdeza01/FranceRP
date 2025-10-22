@@ -24,8 +24,8 @@ module.exports = {
       const guildId = interaction.guild.id;
 
       const SUPER_MOD_ROLES = [
-        "1313029840328327248",
-        "1304151263851708458",
+        "1313029823924404244",
+        "1313030003893735424",
       ];
       const isSuperMod = SUPER_MOD_ROLES.some((rid) =>
         interaction.member.roles.cache.has(rid)
@@ -50,14 +50,23 @@ module.exports = {
 
       const targetPseudo = interaction.options.getString("pseudo");
 
-      const [sanctions] = await db.execute(
-        "SELECT id, pseudo, raison, duration FROM sanctions WHERE guild_id = ? AND punisher_id = ? AND pseudo = ?",
-        [guildId, interaction.user.id, targetPseudo]
-      );
+      let searchSql = "SELECT id, pseudo, raison, duration FROM sanctions WHERE guild_id = ? AND pseudo = ?";
+      const searchParams = [guildId, targetPseudo];
+
+      if (!isSuperMod) {
+        searchSql += " AND punisher_id = ?";
+        searchParams.push(interaction.user.id);
+      }
+      
+      const [sanctions] = await db.execute(searchSql, searchParams);
 
       if (sanctions.length === 0) {
+        const errorMessage = isSuperMod
+          ? `❌ Aucune sanction n'a été trouvée pour le pseudo **${targetPseudo}**.`
+          : `❌ Vous n'avez appliqué aucune sanction pour le pseudo **${targetPseudo}**.`;
+          
         return interaction.reply({
-          content: `❌ Vous n'avez appliqué aucune sanction pour le pseudo **${targetPseudo}**.`,
+          content: errorMessage,
           ephemeral: true,
         });
       }
@@ -110,32 +119,51 @@ module.exports = {
       collector.on("collect", async (i) => {
         const sanctionId = i.values[0];
 
-        await db.execute(
-          "DELETE FROM sanctions WHERE id = ? AND punisher_id = ?",
-          [sanctionId, interaction.user.id]
-        );
+        let deleteSql = "DELETE FROM sanctions WHERE id = ?";
+        const deleteParams = [sanctionId];
 
-        await i.update({
-          content: `✅ La sanction d'ID ${sanctionId} a été supprimée avec succès.`,
-          embeds: [],
-          components: [],
-        });
+        if (!isSuperMod) {
+          deleteSql += " AND punisher_id = ?";
+          deleteParams.push(interaction.user.id);
+        }
+
+        const [result] = await db.execute(deleteSql, deleteParams);
+
+        if (result.affectedRows > 0) {
+            await i.update({
+              content: `✅ La sanction d'ID ${sanctionId} a été supprimée avec succès.`,
+              embeds: [],
+              components: [],
+            });
+        } else {
+             await i.update({
+              content: `❌ Erreur : La sanction n'a pas été supprimée. Elle a peut-être déjà été retirée par quelqu'un d'autre.`,
+              embeds: [],
+              components: [],
+            });
+        }
       });
 
       collector.on("end", async (collected) => {
         if (collected.size === 0) {
           await interaction.editReply({
             content: "⏱️ Aucune sélection effectuée dans le délai imparti.",
+            embeds: [],
             components: [],
           });
         }
       });
     } catch (error) {
       console.error("Erreur lors de la suppression de la sanction :", error);
-      return interaction.reply({
+      const replyOptions = {
         content: "❌ Une erreur est survenue lors de la suppression de la sanction.",
         ephemeral: true,
-      });
+      };
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp(replyOptions);
+      } else {
+        await interaction.reply(replyOptions);
+      }
     }
   },
 };
