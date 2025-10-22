@@ -27,8 +27,11 @@ module.exports = {
         ),
 
     async execute(interaction) {
-        if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-            return interaction.reply({ content: "❌ Tu n'as pas la permission **Administrateur** pour utiliser cette commande.", ephemeral: true });
+
+        const FIC = ["1379059899828404295"];
+
+        if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator) || FIC) {
+            return interaction.reply({ content: "❌ Tu n'as pas la permission **Administrateur** / le role pour utiliser cette commande.", ephemeral: true });
         }
 
         const user = interaction.options.getUser("utilisateur");
