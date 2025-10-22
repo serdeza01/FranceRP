@@ -17,7 +17,7 @@ async function scanAndRegisterSanctions(channel, embedChannel, guildId) {
     return;
   }
 
-  const regex = /^Pseudo\s*:\s*(.+)\nRaison\s*:\s*(.+)\nSanction\s*:\s*(.+)$/i;
+  const regex = /^Pseudo\s*:\s*(.+)\nRaison\s*:\s*(.+)\nSanction\s*:\s*([\w\s]+)[\s\S]*$/i;
   let lastId = null;
 
   while (true) {
