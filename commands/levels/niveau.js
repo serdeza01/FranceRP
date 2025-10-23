@@ -34,7 +34,7 @@ module.exports = {
       let { xp, level } = results[0];
 
       const [rankResult] = await db.execute(
-        "SELECT COUNT(*) AS rank FROM user_levels WHERE guild_id = ? AND (level > ? OR (level = ? AND xp > ?))",
+        "SELECT COUNT(*) AS `rank` FROM user_levels WHERE guild_id = ? AND (level > ? OR (level = ? AND xp > ?))",
         [guildId, level, level, xp]
       );
       const rank = rankResult[0].rank + 1;
