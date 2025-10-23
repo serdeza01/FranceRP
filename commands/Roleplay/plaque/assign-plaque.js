@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, PermissionsBitField } = require("discord.js");
-const db = require("../../../db"); // J'ai gardé ton chemin ../../../db
+const db = require("../../../db");
 
 module.exports = {
   data: new SlashCommandBuilder()

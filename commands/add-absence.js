@@ -93,7 +93,18 @@ module.exports = {
 
             await announcementChannel.send({ embeds: [embed] });
 
-            return interaction.editReply(`✅ Absence ajoutée avec succès. ID de l'absence : **${absenceId}**`);
+            await interaction.editReply("✅ Votre absence a bien été enregistrée et annoncée.");
+
+            try {
+                await interaction.user.send(`Votre absence pour le motif "**${motif}**" a été créée avec succès. Conservez précieusement cet ID pour toute modification future : **${absenceId}**`);
+            } catch (dmError) {
+                console.error(`Impossible d'envoyer un DM à ${interaction.user.tag}.`, dmError);
+                await interaction.followUp({ 
+                    content: `⚠️ Impossible de vous envoyer l'ID en message privé. Le voici : **${absenceId}**`, 
+                    ephemeral: true 
+                });
+            }
+
         } catch (error) {
             console.error("Erreur lors de l'ajout de l'absence :", error);
             return interaction.editReply("❌ Une erreur s'est produite lors de l'ajout de l'absence.");
