@@ -1,6 +1,8 @@
 require("dotenv").config();
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-console.log(`[DÉBOGAGE BDD] Hôte: ${process.env.DB_HOST}, Base: ${process.env.DB_NAME}, Utilisateur: ${process.env.DB_USER}`);
+console.log(
+  `[DÉBOGAGE BDD] Hôte: ${process.env.DB_HOST}, Base: ${process.env.DB_NAME}, Utilisateur: ${process.env.DB_USER}`
+);
 const express = require("express");
 const session = require("express-session");
 const cookieParser = require("cookie-parser");
@@ -41,18 +43,37 @@ app.listen(port, () => {
 async function initDatabase() {
   try {
     await db.execute(
-      `CREATE TABLE IF NOT EXISTS presence_embed (
-                channel_id VARCHAR(255) PRIMARY KEY,
-                message_id VARCHAR(255)
-            )`
+      `CREATE TABLE IF NOT EXISTS presence_embed (channel_id VARCHAR(255) PRIMARY KEY, message_id VARCHAR(255))`
     );
 
     await db.execute(
-      `CREATE TABLE IF NOT EXISTS user_roblox (
-                discord_id VARCHAR(255) PRIMARY KEY,
-                roblox_username VARCHAR(255),
-                roblox_id VARCHAR(255)
-            )`
+      `CREATE TABLE IF NOT EXISTS user_roblox (discord_id VARCHAR(255) PRIMARY KEY, roblox_username VARCHAR(255), roblox_id VARCHAR(255))`
+    );
+    
+    await db.execute(
+      `CREATE TABLE IF NOT EXISTS sanction_config (
+            guild_id VARCHAR(255) PRIMARY KEY,
+            embed_channel_id VARCHAR(255),
+            channel_ids JSON,
+            allowed_role_id VARCHAR(255)
+            -- log_channel_id ajouté via ALTER ci-dessous
+        )`
+    );
+    await db
+      .execute(
+        `ALTER TABLE sanction_config ADD COLUMN log_channel_id VARCHAR(255) AFTER allowed_role_id`
+      )
+      .catch((e) => {
+        if (!e.message.includes("duplicate column")) {
+          console.warn(
+            "[DB] Avertissement lors de la migration de sanction_config:",
+            e.message
+          );
+        }
+      });
+
+    await db.execute(
+      `CREATE TABLE IF NOT EXISTS roblox_to_discord (roblox_pseudo VARCHAR(255) PRIMARY KEY, discord_id VARCHAR(255))`
     );
 
     console.log("Tables créées (si elles n'existaient pas déjà)");
@@ -109,13 +130,14 @@ function loadCommands(dir) {
 
 loadCommands(commandsPath);
 
-console.log(`✅  ${client.commands.size} commandes chargées.`);
+console.log(`✅  ${client.commands.size} commandes chargées.`);
 
 global.staffStatus = new Map();
 global.lastMessageId = null;
 global.ticketAuthorizedRoles = new Set();
 global.ticketAuthorizedUsers = new Set();
 global.reactionChannels = new Set();
+const sanctionChecks = new Map();
 
 const STAFF_ROLE_ID = "1427200751855210566";
 const CHANNEL_ID = "1337086501778882580";
@@ -166,6 +188,117 @@ function updateBotStatusRotating() {
 
   updateStatus();
   setInterval(updateStatus, 20000);
+}
+
+/**
+ * Fonction pour traiter l'embed de sanction et planifier la vérification
+ * @param {import('discord.js').Message} message
+ * @param {string} logChannelId
+ */
+async function handleLogSanctionEmbed(message, logChannelId) {
+  if (!message.author.bot || message.embeds.length === 0) return;
+
+  const embed = message.embeds[0];
+
+  const targetField = embed.fields.find((f) => f.name === "Target");
+  const authorField = embed.fields.find((f) => f.name === "Author");
+  const actionField = embed.fields.find((f) => f.name === "Action");
+
+  if (!targetField || !authorField || !actionField) return;
+
+  const targetPseudo = targetField.value;
+  const authorPseudo = authorField.value;
+  const action = actionField.value.toLowerCase();
+
+  if (action.includes("kicked") || action.includes("banned")) {
+    const isKick = action.includes("kicked");
+    const actionType = isKick ? "Kick" : "Ban";
+    const actionTypeDb = isKick ? "Kick" : "Permanent";
+    const checkTimeMs = 20 * 60 * 1000;
+
+    const checkKey = `${targetPseudo}-${actionType}-${message.id}`;
+    const guildId = message.guild.id;
+
+    console.log(
+      `[Sanction Log] Sanction ${actionType} détectée pour ${targetPseudo} par ${authorPseudo}. Vérification dans 20 min.`
+    );
+
+    const timeoutId = setTimeout(async () => {
+      sanctionChecks.delete(checkKey);
+
+      try {
+        const [dbSanctionRows] = await db.execute(
+          `SELECT * FROM sanctions WHERE guild_id = ? AND pseudo = ? AND duration = ? ORDER BY created_at DESC LIMIT 1`,
+          [guildId, targetPseudo, actionTypeDb]
+        );
+
+        const isRegistered =
+          dbSanctionRows.length > 0 && dbSanctionRows[0].created_at.getTime() >= message.createdAt.getTime();
+        if (!isRegistered) {
+          console.log(
+            `[Sanction Alerte] Sanction non enregistrée pour ${targetPseudo} (${actionType})`
+          );
+
+          const [linkRows] = await db.execute(
+            `SELECT discord_id FROM roblox_to_discord WHERE roblox_pseudo = ?`,
+            [authorPseudo]
+          );
+
+          const moderatorDiscordId =
+            linkRows.length > 0 ? linkRows[0].discord_id : null;
+
+          if (moderatorDiscordId) {
+            const modMember = await message.guild.members
+              .fetch(moderatorDiscordId)
+              .catch(() => null);
+            if (modMember) {
+              const embedAlert = new EmbedBuilder()
+                .setTitle("🚨 Sanction Manquante Détectée 🚨")
+                .setDescription(
+                  `Bonjour ${modMember},\n\nLa sanction **${actionType}** appliquée à **${targetPseudo}** (par votre action via **${authorPseudo}**) dans le log de surveillance n'a **pas été enregistrée** dans le système après 20 minutes.\n\nVeuillez saisir la sanction manuellement immédiatement.`
+                )
+                .addFields(
+                  { name: "Cible", value: targetPseudo, inline: true },
+                  { name: "Action", value: actionType, inline: true },
+                  {
+                    name: "Heure du Log",
+                    value: `<t:${Math.floor(
+                      message.createdAt.getTime() / 1000
+                    )}:F>`,
+                    inline: false,
+                  }
+                )
+                .setColor("Yellow")
+                .setFooter({ text: `Log ID: ${message.id}` });
+
+              modMember.send({ embeds: [embedAlert] }).catch(async () => {
+                const logChannel = message.channel;
+                await logChannel.send({
+                  content: `<@${moderatorDiscordId}>, **ALERTE: SAISIE MANQUANTE** pour **${targetPseudo}** (via ${authorPseudo}).`,
+                  embeds: [embedAlert],
+                });
+              });
+            }
+          } else {
+            console.warn(
+              `[Sanction Alerte] Modérateur Discord non trouvé pour le pseudo Roblox: ${authorPseudo}. Impossible d'envoyer l'alerte.`
+            );
+          }
+        } else {
+          console.log(
+            `[Sanction Vérifiée] Sanction pour ${targetPseudo} enregistrée correctement.`
+          );
+        }
+      } catch (error) {
+        console.error(
+          `Erreur lors de la vérification de la sanction pour ${targetPseudo}:`,
+          error
+        );
+      }
+    }, checkTimeMs);
+
+    sanctionChecks.set(checkKey, timeoutId);
+  }
 }
 
 client.once("ready", async () => {
@@ -414,14 +547,22 @@ client.on("messageCreate", async (message) => {
 
   try {
     const [sanctionConfigRows] = await db.execute(
-      "SELECT channel_ids, embed_channel_id FROM sanction_config WHERE guild_id = ?",
+      "SELECT channel_ids, embed_channel_id, log_channel_id FROM sanction_config WHERE guild_id = ?",
       [message.guild.id]
     );
 
     if (sanctionConfigRows.length === 0) return;
+    const config = sanctionConfigRows[0];
+
+    if (config.log_channel_id && message.channel.id === config.log_channel_id) {
+      if (message.embeds.length > 0) {
+        await handleLogSanctionEmbed(message, config.log_channel_id);
+      }
+    }
 
     let channelIds = [];
-    const dbValue = sanctionConfigRows[0].channel_ids;
+    const dbValue = config.channel_ids;
+
     if (dbValue) {
       if (Array.isArray(dbValue)) {
         channelIds = dbValue;
@@ -474,9 +615,7 @@ client.on("messageCreate", async (message) => {
     const dateApplication = message.createdAt;
 
     await db.execute(
-      `INSERT INTO sanctions
-               (guild_id, punisher_id, pseudo, raison, duration, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO sanctions (guild_id, punisher_id, pseudo, raison, duration, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
       [
         message.guild.id,
         message.author.id,
@@ -508,7 +647,7 @@ client.on("messageCreate", async (message) => {
       .setTimestamp();
 
     const embedChannel = await message.guild.channels.fetch(
-      sanctionConfigRows[0].embed_channel_id
+      config.embed_channel_id
     );
     if (embedChannel) embedChannel.send({ embeds: [embed] });
   } catch (err) {
@@ -573,11 +712,12 @@ client.on("interactionCreate", async (interaction) => {
           });
         }
         const robloxId = response.data.Id;
-        await db.promise().execute(
-          `INSERT INTO user_roblox (discord_id, roblox_username, roblox_id) VALUES (?, ?, ?)
-                     ON DUPLICATE KEY UPDATE roblox_username = VALUES(roblox_username), roblox_id = VALUES(roblox_id)`,
-          [discordId, username, robloxId]
-        );
+        await db
+          .promise()
+          .execute(
+            `INSERT INTO user_roblox (discord_id, roblox_username, roblox_id) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE roblox_username = VALUES(roblox_username), roblox_id = VALUES(roblox_id)`,
+            [discordId, username, robloxId]
+          );
         await interaction.reply({
           content: `Ton compte Roblox **${username}** (ID: ${robloxId}) a été associé à ton compte Discord !`,
           ephemeral: true,
