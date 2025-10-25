@@ -355,7 +355,7 @@ async function handleLogSanctionEmbed(message, logChannelId) {
   ) {
     const isKick = action.includes("kicked");
     const actionType = isKick ? "Kick" : "Ban";
-    const actionTypeDb = isKick ? "Kick" : "Permanent";
+    const actionTypeDb = isKick ? "Kick" : "Ban";
 
     const initialCheckTimeMs = 4 * 60 * 60 * 1000;
     const finalCheckTimeMs = 2 * 60 * 60 * 1000;
