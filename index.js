@@ -48,17 +48,20 @@ async function initDatabase() {
 
     await db.execute(
       `CREATE TABLE IF NOT EXISTS user_roblox (discord_id VARCHAR(255) PRIMARY KEY, roblox_username VARCHAR(255), roblox_id VARCHAR(255))`
-    );
+    ); // CRÉATION/VÉRIFICATION DE LA TABLE sanctions (Corrigé de l'espace)
 
     await db.execute(
-      `CREATE TABLE IF NOT EXISTS sanction_config (
-            guild_id VARCHAR(255) PRIMARY KEY,
-            embed_channel_id VARCHAR(255),
-            channel_ids JSON,
-            allowed_role_id VARCHAR(255)
-            -- log_channel_id ajouté via ALTER ci-dessous
-        )`
-    );
+      `CREATE TABLE IF NOT EXISTS sanctions (id INT AUTO_INCREMENT PRIMARY KEY, guild_id VARCHAR(255) NOT NULL, punisher_id VARCHAR(255) NOT NULL, pseudo VARCHAR(255) NOT NULL, raison TEXT, duration VARCHAR(255), created_at DATETIME NOT NULL)`
+    ); // NOUVELLE TABLE: Suivi des sanctions non enregistrées (Audit)
+
+    await db.execute(
+      `CREATE TABLE IF NOT EXISTS sanction_misses (id INT AUTO_INCREMENT PRIMARY KEY, guild_id VARCHAR(255) NOT NULL, punisher_roblox_pseudo VARCHAR(255) NOT NULL, punisher_discord_id VARCHAR(255) NOT NULL, target_pseudo VARCHAR(255) NOT NULL, action_type VARCHAR(50) NOT NULL, log_message_id VARCHAR(255) NOT NULL UNIQUE, alert_time DATETIME NOT NULL, resolved_at DATETIME NULL)`
+    ); // CRÉATION/VÉRIFICATION DE LA TABLE sanction_config
+
+    await db.execute(
+      `CREATE TABLE IF NOT EXISTS sanction_config (guild_id VARCHAR(255) PRIMARY KEY, embed_channel_id VARCHAR(255), channel_ids JSON, allowed_role_id VARCHAR(255))`
+    ); // MIGRATION 1 : AJOUT DE log_channel_id (pour les logs externes)
+
     await db
       .execute(
         `ALTER TABLE sanction_config ADD COLUMN log_channel_id VARCHAR(255) AFTER allowed_role_id`
@@ -66,7 +69,20 @@ async function initDatabase() {
       .catch((e) => {
         if (!e.message.includes("duplicate column")) {
           console.warn(
-            "[DB] Avertissement lors de la migration de sanction_config:",
+            "[DB] Avertissement lors de la migration de sanction_config (log_channel_id):",
+            e.message
+          );
+        }
+      }); // MIGRATION 2 : AJOUT DE admin_alert_channel_id (pour les logs d'audit)
+
+    await db
+      .execute(
+        `ALTER TABLE sanction_config ADD COLUMN admin_alert_channel_id VARCHAR(255) AFTER log_channel_id`
+      )
+      .catch((e) => {
+        if (!e.message.includes("duplicate column")) {
+          console.warn(
+            "[DB] Avertissement lors de la migration de sanction_config (admin_alert_channel_id):",
             e.message
           );
         }
@@ -103,6 +119,7 @@ process.on("uncaughtException", (err) => {
 
 client.commands = new Collection();
 
+const GUILD_ID_FOR_COMMANDS = "1313028772588421220";
 const commandsPath = path.join(__dirname, "commands");
 
 function loadCommands(dir) {
@@ -138,6 +155,7 @@ global.ticketAuthorizedRoles = new Set();
 global.ticketAuthorizedUsers = new Set();
 global.reactionChannels = new Set();
 const sanctionChecks = new Map();
+const auditChecks = new Map(); // NOUVEAU: Map pour les vérifications finales de 2 heures
 
 const STAFF_ROLE_ID = "1427200751855210566";
 const CHANNEL_ID = "1337086501778882580";
@@ -190,72 +208,218 @@ function updateBotStatusRotating() {
   setInterval(updateStatus, 20000);
 }
 
+// NOUVELLE FONCTION: Vérification finale d'audit
+async function checkFinalSanctionStatus(
+  guildId,
+  logMessageId,
+  targetPseudo,
+  actionTypeDb,
+  moderatorDiscordId,
+  adminAlertChannelId
+) {
+  try {
+    console.log(
+      `[DBG AUDIT] Début de la vérification finale (2h) pour Log ID: ${logMessageId}`
+    ); // 1. Récupérer l'entrée de manquement
+
+    const [missRows] = await db.execute(
+      `SELECT * FROM sanction_misses WHERE log_message_id = ? AND resolved_at IS NULL`,
+      [logMessageId]
+    );
+
+    if (missRows.length === 0) {
+      console.log(
+        `[DBG AUDIT] Manquement déjà marqué comme résolu ou introuvable.`
+      );
+      return;
+    }
+
+    const missEntry = missRows[0]; // 2. Vérifier si une sanction a été enregistrée APRÈS l'alerte initiale
+
+    const [dbSanctionRows] = await db.execute(
+      `SELECT * FROM sanctions WHERE guild_id = ? AND pseudo = ? AND duration = ? AND created_at >= ? ORDER BY created_at DESC LIMIT 1`,
+      [guildId, targetPseudo, actionTypeDb, missEntry.alert_time] // Vérifie si créé APRÈS l'alerte (20min)
+    );
+
+    const isResolved = dbSanctionRows.length > 0;
+
+    if (isResolved) {
+      // L'utilisateur a saisi la sanction dans les 2h
+      await db.execute(
+        `UPDATE sanction_misses SET resolved_at = NOW() WHERE log_message_id = ?`,
+        [logMessageId]
+      );
+      console.log(`[DBG AUDIT] Manquement RÉSOLU pour ${targetPseudo}.`);
+    } else {
+      // L'utilisateur n'a PAS saisi la sanction. C'est un manquement permanent.
+      console.log(
+        `[DBG AUDIT] ❌ Manquement NON RÉSOLU pour ${targetPseudo}. Envoi de l'alerte finale admin.`
+      );
+
+      if (adminAlertChannelId) {
+        const guild = client.guilds.cache.get(guildId);
+        const adminChannel = guild
+          ? await guild.channels.fetch(adminAlertChannelId).catch(() => null)
+          : null;
+
+        if (adminChannel) {
+          const finalEmbed = new EmbedBuilder()
+            .setTitle(`🚨 MANQUEMENT D'AUDIT FINAL 🚨`)
+            .setDescription(
+              `Le modérateur <@${moderatorDiscordId}> (**${missEntry.punisher_roblox_pseudo}**) n'a **PAS** enregistré la sanction de **${targetPseudo}** (Action: ${actionTypeDb}) même après l'alerte MP.`
+            )
+            .setColor("Red")
+            .addFields(
+              { name: "Cible", value: targetPseudo, inline: true },
+              {
+                name: "Modérateur",
+                value: `<@${moderatorDiscordId}>`,
+                inline: true,
+              },
+              {
+                name: "Statut",
+                value: "Non résolu (2 heures écoulées)",
+                inline: true,
+              }
+            )
+            .setTimestamp();
+
+          await adminChannel.send({ embeds: [finalEmbed] });
+        }
+      }
+    }
+  } catch (error) {
+    console.error(
+      `Erreur dans checkFinalSanctionStatus pour Log ID ${logMessageId}:`,
+      error
+    );
+  }
+}
+
 /**
  * Fonction pour traiter l'embed de sanction et planifier la vérification
  * @param {import('discord.js').Message} message
  * @param {string} logChannelId
  */
 async function handleLogSanctionEmbed(message, logChannelId) {
-  if (!message.author.bot || message.embeds.length === 0) return;
+  // 1. Vérification initiale du message (bot et embed)
+  if (!message.author.bot || message.embeds.length === 0) {
+    return;
+  }
 
-  const embed = message.embeds[0];
+  const embed = message.embeds[0]; // LOGS DE VÉRIFICATION DES CHAMPS D'EMBED
 
   const targetField = embed.fields.find((f) => f.name === "Target");
   const authorField = embed.fields.find((f) => f.name === "Author");
   const actionField = embed.fields.find((f) => f.name === "Action");
 
-  if (!targetField || !authorField || !actionField) return;
+  const fieldNames = embed.fields.map((f) => `"${f.name}"`).join(", ");
 
-  const targetPseudo = targetField.value;
-  const authorPseudo = authorField.value;
-  const action = actionField.value.toLowerCase();
+  if (!fieldNames) {
+    console.log(`[DBG LOG] ❌ Embed a 0 champs. Vérifiez si l'embed est vide.`);
+  } else {
+    console.log(`[DBG LOG] Champs trouvés dans l'embed: ${fieldNames}`);
+  }
 
-  if (action.includes("kicked") || action.includes("banned")) {
+  if (!targetField || !authorField || !actionField) {
+    console.log(
+      `[DBG LOG] ❌ Structure de l'embed incorrecte. Target: ${!!targetField}, Author: ${!!authorField}, Action: ${!!actionField}`
+    );
+    return;
+  } // --- CORRECTION DU PROBLÈME DE LIEN MARKDOWN [pseudo](lien) ---
+
+  const targetPseudoRaw = targetField.value;
+  const authorPseudoRaw = authorField.value;
+  const action = actionField.value.toLowerCase(); // Regex pour extraire le texte à l'intérieur des premiers crochets d'un lien Markdown
+
+  const markdownRegex = /^\[(.+?)\]\(.+?\)$/;
+
+  const targetMatch = targetPseudoRaw.match(markdownRegex);
+  const authorMatch = authorPseudoRaw.match(markdownRegex); // Utilise le pseudo nettoyé ou le texte brut (si pas de Markdown)
+
+  const targetPseudo = targetMatch
+    ? targetMatch[1].trim()
+    : targetPseudoRaw.trim();
+  const authorPseudo = authorMatch
+    ? authorMatch[1].trim()
+    : authorPseudoRaw.trim();
+
+  console.log(
+    `[DBG LOG] Données extraites (Nettoyées): Target=${targetPseudo}, Author=${authorPseudo}, Action=${action}`
+  );
+  if (action.includes("kicked") || (action.includes("banned") && !action.includes("unbanned"))) {
+    
     const isKick = action.includes("kicked");
     const actionType = isKick ? "Kick" : "Ban";
     const actionTypeDb = isKick ? "Kick" : "Permanent";
-    const checkTimeMs = 1 * 60 * 1000;
+
+    const initialCheckTimeMs = 4 * 60 * 60 * 1000; // 1 minute pour le test (20 * 60 * 1000 pour la prod)
+    const finalCheckTimeMs = 2 * 60 * 60 * 1000; // 2 heures pour la vérification finale
 
     const checkKey = `${targetPseudo}-${actionType}-${message.id}`;
     const guildId = message.guild.id;
 
     console.log(
-      `[Sanction Log] Sanction ${actionType} détectée pour ${targetPseudo} par ${authorPseudo}. Vérification dans 20 min.`
+      `[DBG LOG] ✅ Action '${actionType}' VRAIMENT détectée. Planification de la vérification dans ${
+        initialCheckTimeMs / 1000
+      } secondes.`
     );
 
     const timeoutId = setTimeout(async () => {
       sanctionChecks.delete(checkKey);
 
+      console.log(
+        `[DBG LOG] 🕒 Début de la vérification pour ${targetPseudo} (${actionType}) après timeout.`
+      );
+
       try {
+        // 4. Vérification de l'existence dans la DB
         const [dbSanctionRows] = await db.execute(
-          `SELECT * FROM sanctions WHERE guild_id = ? AND pseudo = ? AND duration = ? ORDER BY created_at DESC LIMIT 1`,
+          `SELECT * FROM sanctions WHERE guild_id = ? AND pseudo = ? AND duration = ? ORDER BY created_at DESC LIMIT 1`,
           [guildId, targetPseudo, actionTypeDb]
         );
 
         const isRegistered =
-          dbSanctionRows.length > 0 && dbSanctionRows[0].created_at.getTime() >= message.createdAt.getTime();
+          dbSanctionRows.length > 0 &&
+          dbSanctionRows[0].created_at.getTime() >= message.createdAt.getTime();
+
+        console.log(
+          `[DBG LOG] DB Query Result: ${dbSanctionRows.length} rows found. IsRegistered: ${isRegistered}`
+        );
+
         if (!isRegistered) {
           console.log(
-            `[Sanction Alerte] Sanction non enregistrée pour ${targetPseudo} (${actionType})`
-          );
+            `[DBG LOG] 🚨 Sanction non enregistrée. Préparation de l'alerte pour le modérateur ${authorPseudo}.`
+          ); // 5. Recherche du modérateur (utilise le pseudo nettoyé) et récupération canal admin
 
           const [linkRows] = await db.execute(
             `SELECT discord_id FROM roblox_to_discord WHERE roblox_pseudo = ?`,
             [authorPseudo]
           );
+          const [configRows] = await db.execute(
+            `SELECT admin_alert_channel_id FROM sanction_config WHERE guild_id = ?`,
+            [guildId]
+          );
 
           const moderatorDiscordId =
             linkRows.length > 0 ? linkRows[0].discord_id : null;
+          const adminAlertChannelId =
+            configRows.length > 0 ? configRows[0].admin_alert_channel_id : null;
 
           if (moderatorDiscordId) {
+            console.log(
+              `[DBG LOG] Modérateur lié trouvé: ${moderatorDiscordId}. Envoi de l'alerte.`
+            );
+
             const modMember = await message.guild.members
               .fetch(moderatorDiscordId)
-              .catch(() => null);
+              .catch(() => null); // 5a. Envoi de l'alerte MP au modérateur (logique inchangée)
+
             if (modMember) {
               const embedAlert = new EmbedBuilder()
                 .setTitle("🚨 Sanction Manquante Détectée 🚨")
                 .setDescription(
-                  `Bonjour ${modMember},\n\nLa sanction **${actionType}** appliquée à **${targetPseudo}** (par votre action via **${authorPseudo}**) dans le log de surveillance n'a **pas été enregistrée** dans le système après 20 minutes.\n\nVeuillez saisir la sanction manuellement immédiatement.`
+                  `Bonjour ${modMember},\n\nLa sanction **${actionType}** appliquée à **${targetPseudo}** (par votre action via **${authorPseudo}**) dans le log de surveillance n'a **pas été enregistrée** dans le système après 1 minute. **Veuillez la saisir immédiatement!**`
                 )
                 .addFields(
                   { name: "Cible", value: targetPseudo, inline: true },
@@ -277,25 +441,93 @@ async function handleLogSanctionEmbed(message, logChannelId) {
                   content: `<@${moderatorDiscordId}>, **ALERTE: SAISIE MANQUANTE** pour **${targetPseudo}** (via ${authorPseudo}).`,
                   embeds: [embedAlert],
                 });
-              });
+              }); // 5b. NOUVEAU : Enregistrement de l'échec dans sanction_misses
+
+              const alertTime = new Date();
+              await db.execute(
+                `INSERT INTO sanction_misses (guild_id, punisher_roblox_pseudo, punisher_discord_id, target_pseudo, action_type, log_message_id, alert_time) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [
+                  guildId,
+                  authorPseudo,
+                  moderatorDiscordId,
+                  targetPseudo,
+                  actionTypeDb,
+                  message.id,
+                  alertTime,
+                ]
+              );
+              console.log(
+                `[DBG AUDIT] Manquement enregistré. Vérification d'audit dans 2 heures.`
+              ); // 5c. NOUVEAU : Log Administrateur (alerte immédiate)
+
+              if (adminAlertChannelId) {
+                const adminChannel = await message.guild.channels
+                  .fetch(adminAlertChannelId)
+                  .catch(() => null);
+                if (adminChannel) {
+                  const adminEmbed = new EmbedBuilder()
+                    .setTitle(`⚠️ Manquement de Sanction Détecté (Audit)`)
+                    .setDescription(
+                      `Le modérateur <@${moderatorDiscordId}> (**${authorPseudo}**) n'a pas enregistré la sanction de **${targetPseudo}** (Action: ${actionType}) après 20 minutes.`
+                    )
+                    .setColor("Orange")
+                    .addFields(
+                      { name: "Cible", value: targetPseudo, inline: true },
+                      {
+                        name: "Modérateur",
+                        value: `<@${moderatorDiscordId}>`,
+                        inline: true,
+                      },
+                      { name: "Type", value: actionType, inline: true }
+                    )
+                    .setFooter({ text: `Suivi pendant 2 heures.` });
+
+                  await adminChannel.send({
+                    content: `Alerte Admin : <@${moderatorDiscordId}>`,
+                    embeds: [adminEmbed],
+                  });
+                }
+              } // 5d. NOUVEAU : Planification de la vérification finale (2 heures)
+
+              const auditTimeoutId = setTimeout(async () => {
+                auditChecks.delete(message.id);
+                await checkFinalSanctionStatus(
+                  guildId,
+                  message.id,
+                  targetPseudo,
+                  actionTypeDb,
+                  moderatorDiscordId,
+                  adminAlertChannelId
+                );
+              }, finalCheckTimeMs);
+
+              auditChecks.set(message.id, auditTimeoutId);
+            } else {
+              console.warn(
+                `[DBG LOG] ❌ Modérateur Discord trouvé (${moderatorDiscordId}) mais membre introuvable dans la guilde.`
+              );
             }
           } else {
             console.warn(
-              `[Sanction Alerte] Modérateur Discord non trouvé pour le pseudo Roblox: ${authorPseudo}. Impossible d'envoyer l'alerte.`
+              `[DBG LOG] ❌ Modérateur Discord non trouvé dans la table 'roblox_to_discord' pour: ${authorPseudo}.`
             );
           }
         } else {
           console.log(
-            `[Sanction Vérifiée] Sanction pour ${targetPseudo} enregistrée correctement.`
-          );
+            `[DBG LOG] ✅ Sanction pour ${targetPseudo} enregistrée correctement.`
+          ); // NOUVEAU : Si la sanction a été enregistrée, on vérifie si elle était en suivi d'audit et on la résout
+          if (auditChecks.has(message.id)) {
+            clearTimeout(auditChecks.get(message.id));
+            auditChecks.delete(message.id);
+          }
         }
       } catch (error) {
         console.error(
-          `Erreur lors de la vérification de la sanction pour ${targetPseudo}:`,
+          `[DBG LOG] ❌ ERREUR IRRÉCUPÉRABLE lors de la vérification de la sanction pour ${targetPseudo}:`,
           error
         );
       }
-    }, checkTimeMs);
+    }, initialCheckTimeMs);
 
     sanctionChecks.set(checkKey, timeoutId);
   }
@@ -308,257 +540,291 @@ client.once("ready", async () => {
 
   try {
     await client.application.commands.set(
-      client.commands.map((command) => command.data)
+      client.commands.map((command) => command.data),
+      GUILD_ID_FOR_COMMANDS // Utilisation de l'ID pour l'enregistrement instantané
     );
-    console.log("Commandes enregistrées globalement !");
+    console.log("Commandes enregistrées sur le serveur de dev !");
   } catch (error) {
     console.error(
-      "Erreur lors de l'enregistrement des commandes globales :",
+      "Erreur lors de l'enregistrement des commandes de dev :",
       error
     );
-  }
-
-  try {
-    const guild = client.guilds.cache.first();
-    if (!guild) {
-      console.error("Le bot n'est dans aucun serveur.");
-      return;
-    }
-    const members = await guild.members.fetch();
-    for (const username of staffUsernames) {
-      const member = members.find((m) => m.user.username === username);
-      if (member && member.roles.cache.has(STAFF_ROLE_ID)) {
-        global.staffStatus.set(member.id, "disponible");
-      }
-    }
-  } catch (error) {
-    console.error("Erreur lors de la récupération des membres :", error);
-  }
-
-  try {
-    const { startApi } = require("./server.js");
-    startApi(client);
-  } catch (error) {
-    console.error("Erreur lors du démarrage du serveur API :", error);
   }
 
   await sendTicketPanel(client);
 });
 
 client.on("messageCreate", async (message) => {
+  // --- 🚨 LOG 0: DÉBUT DE LA FONCTION ---
+  if (message.content) {
+    console.log(
+      `[DBG MESSAGE] Message reçu (Auteur: ${
+        message.author.tag
+      }, Contenu: ${message.content.substring(0, 50)}...)`
+    );
+  }
+
   if (
     global.reactionChannels &&
     global.reactionChannels.has(message.channel.id)
   ) {
     await message.react("✅");
     await message.react("❌");
-  }
+  } // --- VÉRIFICATION NON BOT/GUILDE ---
 
-  if (message.author.bot || !message.guild) return;
+  if (message.author.bot || !message.guild) {
+    if (message.author.bot) {
+      console.log(
+        `[DBG MESSAGE] Auteur est un bot. Sortie précoce. (Sauf si c'est le bot de log externe)`
+      );
+    }
+    if (!message.guild) {
+      console.log(`[DBG MESSAGE] Message hors guilde (DM). Sortie précoce.`);
+    } // NOTE: On ne return pas ici car le message peut être un embed de log posté par un autre bot. // On continue pour vérifier les logs de sanction ci-dessous.
+  } // On doit absolument continuer pour le bloc de sanction si c'est un BOT
+
+  if (!message.guild) return; // Si pas de guilde, on peut s'arrêter
+
   const guildId = message.guild.id;
   const discordId = message.author.id;
-  const now = Date.now();
+  const now = Date.now(); // ✅ CORRECTION FINALE: Utilise Date.now() // --- LOGIQUE ANTI-SPAM (Nécessite que l'auteur ne soit pas un bot) ---
 
-  try {
-    const [configRows] = await db.execute(
-      "SELECT enabled FROM antispam_config WHERE guild_id = ?",
-      [guildId]
-    );
-    if (configRows.length && configRows[0].enabled) {
-      if (!global.spamMap) global.spamMap = new Map();
-      const spamKey = `${guildId}-${discordId}`;
-      let timestamps = global.spamMap.get(spamKey) || [];
-      timestamps.push(now);
-      const spamTimeFrame = 7000;
-      timestamps = timestamps.filter((ts) => now - ts < spamTimeFrame);
-      global.spamMap.set(spamKey, timestamps);
+  if (!message.author.bot) {
+    try {
+      const [configRows] = await db.execute(
+        "SELECT enabled FROM antispam_config WHERE guild_id = ?",
+        [guildId]
+      );
+      if (configRows.length && configRows[0].enabled) {
+        if (!global.spamMap) global.spamMap = new Map();
+        const spamKey = `${guildId}-${discordId}`;
+        let timestamps = global.spamMap.get(spamKey) || [];
+        timestamps.push(now);
+        const spamTimeFrame = 7000;
+        timestamps = timestamps.filter((ts) => now - ts < spamTimeFrame);
+        global.spamMap.set(spamKey, timestamps);
 
-      const spamThreshold = 5;
-      if (timestamps.length >= spamThreshold) {
-        try {
-          const fetched = await message.channel.messages.fetch({ limit: 100 });
-          const messagesToDelete = fetched.filter(
-            (m) =>
-              m.author.id === discordId &&
-              now - m.createdTimestamp < spamTimeFrame
-          );
-          if (messagesToDelete.size > 0) {
-            await message.channel.bulkDelete(messagesToDelete, true);
+        const spamThreshold = 5;
+        if (timestamps.length >= spamThreshold) {
+          try {
+            const fetched = await message.channel.messages.fetch({
+              limit: 100,
+            });
+            const messagesToDelete = fetched.filter(
+              (m) =>
+                m.author.id === discordId &&
+                now - m.createdTimestamp < spamTimeFrame
+            );
+            if (messagesToDelete.size > 0) {
+              await message.channel.bulkDelete(messagesToDelete, true);
+            }
+          } catch (err) {
+            console.error(
+              "Erreur lors de la suppression des messages spam :",
+              err
+            );
           }
-        } catch (err) {
-          console.error(
-            "Erreur lors de la suppression des messages spam :",
-            err
-          );
-        }
 
-        try {
-          const [rows] = await db.execute(
-            "SELECT warns, kicks FROM antispam_records WHERE guild_id = ? AND user_id = ?",
-            [guildId, discordId]
-          );
-          let warns = 0;
-          let kicks = 0;
-          if (rows.length === 0) {
-            await db.execute(
-              "INSERT INTO antispam_records (guild_id, user_id, warns, kicks) VALUES (?, ?, 1, 0)",
+          try {
+            const [rows] = await db.execute(
+              "SELECT warns, kicks FROM antispam_records WHERE guild_id = ? AND user_id = ?",
               [guildId, discordId]
             );
-            warns = 1;
-          } else {
-            warns = rows[0].warns + 1;
-            kicks = rows[0].kicks;
-            await db.execute(
-              "UPDATE antispam_records SET warns = ? WHERE guild_id = ? AND user_id = ?",
-              [warns, guildId, discordId]
-            );
-          }
+            let warns = 0;
+            let kicks = 0;
+            if (rows.length === 0) {
+              await db.execute(
+                "INSERT INTO antispam_records (guild_id, user_id, warns, kicks) VALUES (?, ?, 1, 0)",
+                [guildId, discordId]
+              );
+              warns = 1;
+            } else {
+              warns = rows[0].warns + 1;
+              kicks = rows[0].kicks;
+              await db.execute(
+                "UPDATE antispam_records SET warns = ? WHERE guild_id = ? AND user_id = ?",
+                [warns, guildId, discordId]
+              );
+            }
 
-          if (warns < 3) {
-            message.channel.send(
-              `<@${discordId}> Attention ! Ce comportement est considéré comme du spam. (Warn ${warns}/3)`
-            );
-          } else if (warns >= 3 && kicks < 2) {
-            try {
-              const member = await message.guild.members.fetch(discordId);
-              if (member) {
-                await member.kick("Anti-spam : accumulation de 3 warns");
-                kicks++;
-                await db.execute(
-                  "UPDATE antispam_records SET kicks = ? WHERE guild_id = ? AND user_id = ?",
-                  [kicks, guildId, discordId]
-                );
-                await member
-                  .send(
-                    `Vous avez été **kick** du serveur \`${message.guild.name}\` pour spam excessif (3 warns atteints).`
-                  )
-                  .catch(() =>
-                    console.error(
-                      "Impossible d'envoyer un DM à l'utilisateur kick."
-                    )
+            if (warns < 3) {
+              message.channel.send(
+                `<@${discordId}> Attention ! Ce comportement est considéré comme du spam. (Warn ${warns}/3)`
+              );
+            } else if (warns >= 3 && kicks < 2) {
+              try {
+                const member = await message.guild.members.fetch(discordId);
+                if (member) {
+                  await member.kick("Anti-spam : accumulation de 3 warns");
+                  kicks++;
+                  await db.execute(
+                    "UPDATE antispam_records SET kicks = ? WHERE guild_id = ? AND user_id = ?",
+                    [kicks, guildId, discordId]
                   );
-                message.channel.send(
-                  `<@${discordId}> a été **kick** pour spam (3 warns).`
-                );
-              }
-            } catch (err) {
-              console.error("Erreur lors du kick anti-spam :", err);
-            }
-          } else if (warns >= 3 && kicks >= 2) {
-            try {
-              const member = await message.guild.members.fetch(discordId);
-              if (member) {
-                await member.ban({
-                  reason: "Anti-spam : accumulation de 3 warns et 2 kicks",
-                });
-                await member
-                  .send(
-                    `Vous avez été **banni** du serveur \`${message.guild.name}\` pour spam excessif (3 warns et 2 kicks accumulés).`
-                  )
-                  .catch(() =>
-                    console.error(
-                      "Impossible d'envoyer un DM à l'utilisateur banni."
+                  await member
+                    .send(
+                      `Vous avez été **kick** du serveur \`${message.guild.name}\` pour spam excessif (3 warns atteints).`
                     )
+                    .catch(() =>
+                      console.error(
+                        "Impossible d'envoyer un DM à l'utilisateur kick."
+                      )
+                    );
+                  message.channel.send(
+                    `<@${discordId}> a été **kick** pour spam (3 warns).`
                   );
-                message.channel.send(
-                  `<@${discordId}> a été **banni** pour spam excessif.`
-                );
+                }
+              } catch (err) {
+                console.error("Erreur lors du kick anti-spam :", err);
               }
-            } catch (err) {
-              console.error("Erreur lors du ban anti-spam :", err);
+            } else if (warns >= 3 && kicks >= 2) {
+              try {
+                const member = await message.guild.members.fetch(discordId);
+                if (member) {
+                  await member.ban({
+                    reason: "Anti-spam : accumulation de 3 warns et 2 kicks",
+                  });
+                  await member
+                    .send(
+                      `Vous avez été **banni** du serveur \`${message.guild.name}\` pour spam excessif (3 warns et 2 kicks accumulés).`
+                    )
+                    .catch(() =>
+                      console.error(
+                        "Impossible d'envoyer un DM à l'utilisateur banni."
+                      )
+                    );
+                  message.channel.send(
+                    `<@${discordId}> a été **banni** pour spam excessif.`
+                  );
+                }
+              } catch (err) {
+                console.error("Erreur lors du ban anti-spam :", err);
+              }
             }
+          } catch (err) {
+            console.error("Erreur lors du traitement de l'antispam :", err);
           }
-        } catch (err) {
-          console.error("Erreur lors du traitement de l'antispam :", err);
+          global.spamMap.set(spamKey, []);
         }
-        global.spamMap.set(spamKey, []);
       }
-    }
-  } catch (err) {
-    console.error(
-      "Erreur lors de la lecture de la configuration anti-spam :",
-      err
-    );
-  }
-
-  try {
-    if (!global.lastMessageTimestamps) global.lastMessageTimestamps = {};
-    const xpKey = `${guildId}-${discordId}`;
-    if (
-      global.lastMessageTimestamps[xpKey] &&
-      now - global.lastMessageTimestamps[xpKey] < 10000
-    ) {
-    } else {
-      global.lastMessageTimestamps[xpKey] = now;
-      const xpEarned = Math.max(1, Math.floor(message.content.length / 10));
-
-      await db.execute(
-        `INSERT INTO user_levels (guild_id, discord_id, xp, level) VALUES (?, ?, ?, 1) ON DUPLICATE KEY UPDATE xp = xp + ?`,
-        [guildId, discordId, xpEarned, xpEarned]
+    } catch (err) {
+      console.error(
+        "Erreur lors de la lecture de la configuration anti-spam :",
+        err
       );
+    } // --- LOGIQUE XP ---
 
-      const [rows] = await db.execute(
-        "SELECT xp, level FROM user_levels WHERE guild_id = ? AND discord_id = ?",
-        [guildId, discordId]
-      );
-      if (rows.length > 0) {
-        let { xp, level } = rows[0];
-        let xpThreshold = Math.floor(13.3 * Math.pow(level, 2));
-        let leveledUp = false;
-        while (xp >= xpThreshold) {
-          xp -= xpThreshold;
-          level++;
-          leveledUp = true;
-          xpThreshold = Math.floor(13.3 * Math.pow(level, 2));
-        }
+    try {
+      if (!global.lastMessageTimestamps) global.lastMessageTimestamps = {};
+      const xpKey = `${guildId}-${discordId}`;
+      if (
+        global.lastMessageTimestamps[xpKey] &&
+        now - global.lastMessageTimestamps[xpKey] < 10000
+      ) {
+      } else {
+        global.lastMessageTimestamps[xpKey] = now;
+        const xpEarned = Math.max(1, Math.floor(message.content.length / 10));
+
         await db.execute(
-          "UPDATE user_levels SET xp = ?, level = ? WHERE guild_id = ? AND discord_id = ?",
-          [xp, level, guildId, discordId]
-        );
-        const [configRows] = await db.execute(
-          "SELECT system_enabled, announce_enabled, announce_channel FROM level_config WHERE guild_id = ?",
-          [guildId]
+          `INSERT INTO user_levels (guild_id, discord_id, xp, level) VALUES (?, ?, ?, 1) ON DUPLICATE KEY UPDATE xp = xp + ?`,
+          [guildId, discordId, xpEarned, xpEarned]
         );
 
-        if (
-          configRows.length > 0 &&
-          configRows[0].system_enabled &&
-          configRows[0].announce_enabled &&
-          leveledUp
-        ) {
-          const embed = new EmbedBuilder()
-            .setTitle("Nouveau Niveau Atteint !")
-            .setDescription(
-              `<@${discordId}> vient d'atteindre le niveau **${level}** !`
-            )
-            .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
-            .setColor("#00FF00")
-            .setTimestamp();
-          let channel =
-            message.guild.channels.cache.get(configRows[0].announce_channel) ||
-            message.channel;
-          channel.send({ embeds: [embed] });
+        const [rows] = await db.execute(
+          "SELECT xp, level FROM user_levels WHERE guild_id = ? AND discord_id = ?",
+          [guildId, discordId]
+        );
+        if (rows.length > 0) {
+          let { xp, level } = rows[0];
+          let xpThreshold = Math.floor(13.3 * Math.pow(level, 2));
+          let leveledUp = false;
+          while (xp >= xpThreshold) {
+            xp -= xpThreshold;
+            level++;
+            leveledUp = true;
+            xpThreshold = Math.floor(13.3 * Math.pow(level, 2));
+          }
+          await db.execute(
+            "UPDATE user_levels SET xp = ?, level = ? WHERE guild_id = ? AND discord_id = ?",
+            [xp, level, guildId, discordId]
+          );
+          const [configRows] = await db.execute(
+            "SELECT system_enabled, announce_enabled, announce_channel FROM level_config WHERE guild_id = ?",
+            [guildId]
+          );
+
+          if (
+            configRows.length > 0 &&
+            configRows[0].system_enabled &&
+            configRows[0].announce_enabled &&
+            leveledUp
+          ) {
+            const embed = new EmbedBuilder()
+              .setTitle("Nouveau Niveau Atteint !")
+              .setDescription(
+                `<@${discordId}> vient d'atteindre le niveau **${level}** !`
+              )
+              .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
+              .setColor("#00FF00")
+              .setTimestamp();
+            let channel =
+              message.guild.channels.cache.get(
+                configRows[0].announce_channel
+              ) || message.channel;
+            channel.send({ embeds: [embed] });
+          }
         }
       }
+    } catch (err) {
+      console.error("Erreur dans le système d'XP :", err);
     }
-  } catch (err) {
-    console.error("Erreur dans le système d'XP :", err);
-  }
+  } // Fin du bloc if (!message.author.bot) // --- DÉBUT LOGIQUE SANCTIONS (PEUT ÊTRE DÉCLENCHÉE PAR UN BOT OU UN HUMAIN) ---
 
   try {
-    const [sanctionConfigRows] = await db.execute(
-      "SELECT channel_ids, embed_channel_id, log_channel_id FROM sanction_config WHERE guild_id = ?",
-      [message.guild.id]
+    // --- LOG 1: TENTATIVE DE LECTURE DB ---
+    console.log(
+      `[DBG SANCTION] Tentative de lecture config pour Guild ID: ${guildId}`
     );
 
-    if (sanctionConfigRows.length === 0) return;
-    const config = sanctionConfigRows[0];
+    const [sanctionConfigRows] = await db.execute(
+      "SELECT channel_ids, embed_channel_id, log_channel_id, admin_alert_channel_id FROM sanction_config WHERE guild_id = ?",
+      [message.guild.id]
+    ); // --- LOG 2: RÉSULTAT LECTURE DB ---
 
-    if (config.log_channel_id && message.channel.id === config.log_channel_id) {
-      if (message.embeds.length > 0) {
-        await handleLogSanctionEmbed(message, config.log_channel_id);
-      }
+    if (sanctionConfigRows.length === 0) {
+      console.log(
+        "[DBG SANCTION] ❌ Aucune ligne trouvée dans sanction_config. Sortie."
+      );
+      return;
     }
+
+    console.log("[DBG SANCTION] ✅ Configuration de sanction trouvée.");
+    const config = sanctionConfigRows[0]; // LOGS DE DÉBOGAGE : AFFICHAGE DES IDs
+
+    const logChannelId = config.log_channel_id;
+    if (logChannelId) {
+      console.log(`[DBG SANCTION] - Log Channel ID (DB): ${logChannelId}`);
+      console.log(`[DBG SANCTION] - Message Channel ID: ${message.channel.id}`);
+    } else {
+      console.log(
+        `[DBG SANCTION] ❌ Log Channel ID non configuré (null ou vide).`
+      );
+    } // --- SURVEILLANCE DES LOGS EXTERNES (Kick/Ban Embed) ---
+
+    if (logChannelId && message.channel.id === logChannelId) {
+      if (message.embeds.length > 0) {
+        console.log(
+          "[DBG SANCTION] 🟢 Message détecté dans le canal de surveillance. Traitement de l'embed..."
+        ); // L'appel à handleLogSanctionEmbed contient les logs de vérification de champs
+        await handleLogSanctionEmbed(message, config.log_channel_id);
+      } else {
+        console.log(
+          "[DBG SANCTION] 🟠 Message détecté dans le canal de surveillance mais n'est PAS un embed."
+        );
+      }
+    } // --- ENREGISTREMENT DES SANCTIONS MANUELLES (Vérification des canaux de saisie) --- // Cette logique ne devrait être exécutée que par des utilisateurs, pas par des bots
+
+    if (message.author.bot) return;
 
     let channelIds = [];
     const dbValue = config.channel_ids;
@@ -612,10 +878,10 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    const dateApplication = message.createdAt;
+    const dateApplication = message.createdAt; // CORRECTION DE L'ESPACE DANS LE NOM DE LA TABLE
 
     await db.execute(
-      `INSERT INTO sanctions (guild_id, punisher_id, pseudo, raison, duration, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO sanctions (guild_id, punisher_id, pseudo, raison, duration, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
       [
         message.guild.id,
         message.author.id,
@@ -652,7 +918,7 @@ client.on("messageCreate", async (message) => {
     if (embedChannel) embedChannel.send({ embeds: [embed] });
   } catch (err) {
     console.error("Erreur lors du traitement des sanctions :", err);
-  }
+  } // --- FIN LOGIQUE SANCTIONS ---
 });
 
 client.on("interactionCreate", async (interaction) => {
