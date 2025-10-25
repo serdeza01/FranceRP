@@ -30,7 +30,6 @@ module.exports = {
     cutoffDate.setDate(cutoffDate.getDate() - days);
 
     try {
-      // 1. Compter les manquements totaux (résolus et non résolus)
       const [totalMisses] = await db.execute(
         `SELECT COUNT(*) as total FROM sanction_misses WHERE guild_id = ? AND alert_time >= ?`,
         [guildId, cutoffDate]

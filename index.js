@@ -213,47 +213,44 @@ async function checkFinalSanctionStatus(
   guildId,
   logMessageId,
   targetPseudo,
-  actionTypeDb,
+  actionTypeDb, // C'est le type 'Kick' ou 'Permanent'
   moderatorDiscordId,
   adminAlertChannelId
 ) {
   try {
     console.log(
-      `[DBG AUDIT] Début de la vérification finale (2h) pour Log ID: ${logMessageId}`
-    ); // 1. Récupérer l'entrée de manquement
-
+      `[DBG AUDIT] Début de la vérification finale (2h après alerte) pour Log ID: ${logMessageId}`
+    );
     const [missRows] = await db.execute(
       `SELECT * FROM sanction_misses WHERE log_message_id = ? AND resolved_at IS NULL`,
       [logMessageId]
     );
-
     if (missRows.length === 0) {
       console.log(
-        `[DBG AUDIT] Manquement déjà marqué comme résolu ou introuvable.`
+        `[DBG AUDIT] Manquement déjà marqué comme résolu ou introuvable (Vérification finale).`
       );
       return;
     }
-
-    const missEntry = missRows[0]; // 2. Vérifier si une sanction a été enregistrée APRÈS l'alerte initiale
+    const missEntry = missRows[0];
 
     const [dbSanctionRows] = await db.execute(
-      `SELECT * FROM sanctions WHERE guild_id = ? AND pseudo = ? AND duration = ? AND created_at >= ? ORDER BY created_at DESC LIMIT 1`,
-      [guildId, targetPseudo, actionTypeDb, missEntry.alert_time] // Vérifie si créé APRÈS l'alerte (20min)
+      `SELECT COUNT(*) as count FROM sanctions WHERE guild_id = ? AND pseudo = ? AND duration = ? AND created_at >= ?`,
+      [guildId, targetPseudo, actionTypeDb, missEntry.alert_time]
     );
 
-    const isResolved = dbSanctionRows.length > 0;
+    const isResolved = dbSanctionRows[0].count > 0;
 
     if (isResolved) {
-      // L'utilisateur a saisi la sanction dans les 2h
       await db.execute(
         `UPDATE sanction_misses SET resolved_at = NOW() WHERE log_message_id = ?`,
         [logMessageId]
       );
-      console.log(`[DBG AUDIT] Manquement RÉSOLU pour ${targetPseudo}.`);
-    } else {
-      // L'utilisateur n'a PAS saisi la sanction. C'est un manquement permanent.
       console.log(
-        `[DBG AUDIT] ❌ Manquement NON RÉSOLU pour ${targetPseudo}. Envoi de l'alerte finale admin.`
+        `[DBG AUDIT] ✅ Manquement RÉSOLU (Vérification finale) pour ${targetPseudo}.`
+      );
+    } else {
+      console.log(
+        `[DBG AUDIT] ❌ Manquement NON RÉSOLU (Vérification finale) pour ${targetPseudo}. Envoi de l'alerte finale admin.`
       );
 
       if (adminAlertChannelId) {
@@ -264,24 +261,30 @@ async function checkFinalSanctionStatus(
 
         if (adminChannel) {
           const finalEmbed = new EmbedBuilder()
-            .setTitle(`🚨 MANQUEMENT D'AUDIT FINAL 🚨`)
+            .setTitle(`🚨 Oubli de Signalement🚨`)
             .setDescription(
-              `Le modérateur <@${moderatorDiscordId}> (**${missEntry.punisher_roblox_pseudo}**) n'a **PAS** enregistré la sanction de **${targetPseudo}** (Action: ${actionTypeDb}) même après l'alerte MP.`
+              `Le modérateur <@${moderatorDiscordId}> (**${missEntry.punisher_roblox_pseudo}**) n'a **toujours pas signalé** la sanction appliquée à **${targetPseudo}**.`
             )
             .setColor("Red")
             .addFields(
-              { name: "Cible", value: targetPseudo, inline: true },
+              { name: "Cible Sanctionnée", value: targetPseudo, inline: true },
               {
-                name: "Modérateur",
-                value: `<@${moderatorDiscordId}>`,
+                name: "Modérateur Concerné",
+                value: `<@${moderatorDiscordId}> (${missEntry.punisher_roblox_pseudo})`,
+                inline: true,
+              },
+              {
+                name: "Type d'Action Oubliée",
+                value: actionTypeDb,
                 inline: true,
               },
               {
                 name: "Statut",
-                value: "Non résolu (2 heures écoulées)",
-                inline: true,
+                value: "🔴 Pas signalé après 6 heures",
+                inline: false,
               }
             )
+            .setFooter({ text: `Log original ID: ${logMessageId}` })
             .setTimestamp();
 
           await adminChannel.send({ embeds: [finalEmbed] });
@@ -297,17 +300,16 @@ async function checkFinalSanctionStatus(
 }
 
 /**
- * Fonction pour traiter l'embed de sanction et planifier la vérification
+ * Fonction pour traiter l'embed de sanction et planifier la vérification initiale (4h)
  * @param {import('discord.js').Message} message
  * @param {string} logChannelId
  */
 async function handleLogSanctionEmbed(message, logChannelId) {
-  // 1. Vérification initiale du message (bot et embed)
   if (!message.author.bot || message.embeds.length === 0) {
     return;
   }
 
-  const embed = message.embeds[0]; // LOGS DE VÉRIFICATION DES CHAMPS D'EMBED
+  const embed = message.embeds[0];
 
   const targetField = embed.fields.find((f) => f.name === "Target");
   const authorField = embed.fields.find((f) => f.name === "Author");
@@ -326,16 +328,16 @@ async function handleLogSanctionEmbed(message, logChannelId) {
       `[DBG LOG] ❌ Structure de l'embed incorrecte. Target: ${!!targetField}, Author: ${!!authorField}, Action: ${!!actionField}`
     );
     return;
-  } // --- CORRECTION DU PROBLÈME DE LIEN MARKDOWN [pseudo](lien) ---
+  }
 
   const targetPseudoRaw = targetField.value;
   const authorPseudoRaw = authorField.value;
-  const action = actionField.value.toLowerCase(); // Regex pour extraire le texte à l'intérieur des premiers crochets d'un lien Markdown
+  const action = actionField.value.toLowerCase();
 
   const markdownRegex = /^\[(.+?)\]\(.+?\)$/;
 
   const targetMatch = targetPseudoRaw.match(markdownRegex);
-  const authorMatch = authorPseudoRaw.match(markdownRegex); // Utilise le pseudo nettoyé ou le texte brut (si pas de Markdown)
+  const authorMatch = authorPseudoRaw.match(markdownRegex);
 
   const targetPseudo = targetMatch
     ? targetMatch[1].trim()
@@ -347,33 +349,34 @@ async function handleLogSanctionEmbed(message, logChannelId) {
   console.log(
     `[DBG LOG] Données extraites (Nettoyées): Target=${targetPseudo}, Author=${authorPseudo}, Action=${action}`
   );
-  if (action.includes("kicked") || (action.includes("banned") && !action.includes("unbanned"))) {
-    
+  if (
+    action.includes("kicked") ||
+    (action.includes("banned") && !action.includes("unbanned"))
+  ) {
     const isKick = action.includes("kicked");
     const actionType = isKick ? "Kick" : "Ban";
     const actionTypeDb = isKick ? "Kick" : "Permanent";
 
-    const initialCheckTimeMs = 4 * 60 * 60 * 1000; // 1 minute pour le test (20 * 60 * 1000 pour la prod)
-    const finalCheckTimeMs = 2 * 60 * 60 * 1000; // 2 heures pour la vérification finale
+    const initialCheckTimeMs = 4 * 60 * 60 * 1000;
+    const finalCheckTimeMs = 2 * 60 * 60 * 1000;
 
     const checkKey = `${targetPseudo}-${actionType}-${message.id}`;
     const guildId = message.guild.id;
 
     console.log(
-      `[DBG LOG] ✅ Action '${actionType}' VRAIMENT détectée. Planification de la vérification dans ${
-        initialCheckTimeMs / 1000
-      } secondes.`
+      `[DBG LOG] ✅ Action '${actionType}' VRAIMENT détectée. Planification de la vérification initiale dans ${
+        initialCheckTimeMs / (60 * 60 * 1000)
+      } heures.`
     );
 
     const timeoutId = setTimeout(async () => {
       sanctionChecks.delete(checkKey);
 
       console.log(
-        `[DBG LOG] 🕒 Début de la vérification pour ${targetPseudo} (${actionType}) après timeout.`
+        `[DBG LOG] 🕒 Début de la vérification initiale (4h) pour ${targetPseudo} (${actionType}) après timeout.`
       );
 
       try {
-        // 4. Vérification de l'existence dans la DB
         const [dbSanctionRows] = await db.execute(
           `SELECT * FROM sanctions WHERE guild_id = ? AND pseudo = ? AND duration = ? ORDER BY created_at DESC LIMIT 1`,
           [guildId, targetPseudo, actionTypeDb]
@@ -384,14 +387,13 @@ async function handleLogSanctionEmbed(message, logChannelId) {
           dbSanctionRows[0].created_at.getTime() >= message.createdAt.getTime();
 
         console.log(
-          `[DBG LOG] DB Query Result: ${dbSanctionRows.length} rows found. IsRegistered: ${isRegistered}`
+          `[DBG LOG] DB Query Result (Initial Check): ${dbSanctionRows.length} rows found. IsRegistered: ${isRegistered}`
         );
 
         if (!isRegistered) {
           console.log(
-            `[DBG LOG] 🚨 Sanction non enregistrée. Préparation de l'alerte pour le modérateur ${authorPseudo}.`
-          ); // 5. Recherche du modérateur (utilise le pseudo nettoyé) et récupération canal admin
-
+            `[DBG LOG] 🚨 Sanction non enregistrée (4h). Préparation des alertes pour modérateur ${authorPseudo} et admins.`
+          );
           const [linkRows] = await db.execute(
             `SELECT discord_id FROM roblox_to_discord WHERE roblox_pseudo = ?`,
             [authorPseudo]
@@ -408,44 +410,45 @@ async function handleLogSanctionEmbed(message, logChannelId) {
 
           if (moderatorDiscordId) {
             console.log(
-              `[DBG LOG] Modérateur lié trouvé: ${moderatorDiscordId}. Envoi de l'alerte.`
+              `[DBG LOG] Modérateur lié trouvé: ${moderatorDiscordId}.`
             );
-
             const modMember = await message.guild.members
               .fetch(moderatorDiscordId)
-              .catch(() => null); // 5a. Envoi de l'alerte MP au modérateur (logique inchangée)
-
+              .catch(() => null);
             if (modMember) {
-              const embedAlert = new EmbedBuilder()
-                .setTitle("🚨 Sanction Manquante Détectée 🚨")
-                .setDescription(
-                  `Bonjour ${modMember},\n\nLa sanction **${actionType}** appliquée à **${targetPseudo}** (par votre action via **${authorPseudo}**) dans le log de surveillance n'a **pas été enregistrée** dans le système après 1 minute. **Veuillez la saisir immédiatement!**`
-                )
-                .addFields(
-                  { name: "Cible", value: targetPseudo, inline: true },
-                  { name: "Action", value: actionType, inline: true },
-                  {
-                    name: "Heure du Log",
-                    value: `<t:${Math.floor(
-                      message.createdAt.getTime() / 1000
-                    )}:F>`,
-                    inline: false,
-                  }
-                )
-                .setColor("Yellow")
-                .setFooter({ text: `Log ID: ${message.id}` });
+              try {
+                const embedAlert = new EmbedBuilder()
+                  .setTitle("⏰ Rappel : Sanction Non Signalée ⏰")
+                  .setDescription(
+                    `Bonjour ${modMember},\n\nIl semble que la sanction **${actionType}** appliquée à **${targetPseudo}** (par votre action via **${authorPseudo}**) il y a 4 heures n'a **pas été signalée** dans le système.\n\nMerci de la signaler dès que possible.`
+                  )
+                  .addFields(
+                    { name: "Cible", value: targetPseudo, inline: true },
+                    { name: "Action", value: actionType, inline: true },
+                    {
+                      name: "Heure du Log Initial",
+                      value: `<t:${Math.floor(
+                        message.createdAt.getTime() / 1000
+                      )}:R>`,
+                      inline: false,
+                    }
+                  )
+                  .setColor("Yellow")
+                  .setFooter({ text: `Log ID: ${message.id}` });
 
-              modMember.send({ embeds: [embedAlert] }).catch(async () => {
-                const logChannel = message.channel;
-                await logChannel.send({
-                  content: `<@${moderatorDiscordId}>, **ALERTE: SAISIE MANQUANTE** pour **${targetPseudo}** (via ${authorPseudo}).`,
-                  embeds: [embedAlert],
-                });
-              }); // 5b. NOUVEAU : Enregistrement de l'échec dans sanction_misses
-
+                await modMember.send({ embeds: [embedAlert] });
+                console.log(
+                  `[DBG LOG] Alerte MP envoyée à ${modMember.user.tag}.`
+                );
+              } catch (dmError) {
+                console.warn(
+                  `[DBG LOG] ⚠️ Impossible d'envoyer l'alerte MP à ${modMember.user.tag}. L'utilisateur a peut-être bloqué les DMs.`
+                );
+              }
               const alertTime = new Date();
               await db.execute(
-                `INSERT INTO sanction_misses (guild_id, punisher_roblox_pseudo, punisher_discord_id, target_pseudo, action_type, log_message_id, alert_time) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO sanction_misses
+                   (guild_id, punisher_roblox_pseudo, punisher_discord_id, target_pseudo, action_type, log_message_id, alert_time) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE alert_time = VALUES(alert_time)`,
                 [
                   guildId,
                   authorPseudo,
@@ -456,9 +459,7 @@ async function handleLogSanctionEmbed(message, logChannelId) {
                   alertTime,
                 ]
               );
-              console.log(
-                `[DBG AUDIT] Manquement enregistré. Vérification d'audit dans 2 heures.`
-              ); // 5c. NOUVEAU : Log Administrateur (alerte immédiate)
+              console.log(`[DBG AUDIT] Manquement enregistré/mis à jour.`);
 
               if (adminAlertChannelId) {
                 const adminChannel = await message.guild.channels
@@ -466,29 +467,35 @@ async function handleLogSanctionEmbed(message, logChannelId) {
                   .catch(() => null);
                 if (adminChannel) {
                   const adminEmbed = new EmbedBuilder()
-                    .setTitle(`⚠️ Manquement de Sanction Détecté (Audit)`)
+                    .setTitle(`📝 Oubli de Signalement Détecté`)
                     .setDescription(
-                      `Le modérateur <@${moderatorDiscordId}> (**${authorPseudo}**) n'a pas enregistré la sanction de **${targetPseudo}** (Action: ${actionType}) après 20 minutes.`
+                      `Le modérateur <@${moderatorDiscordId}> (**${authorPseudo}**) n'a pas signalé la sanction de **${targetPseudo}** (Action: ${actionType}) après 4 heures. Un rappel lui a été envoyé en MP.`
                     )
                     .setColor("Orange")
                     .addFields(
                       { name: "Cible", value: targetPseudo, inline: true },
                       {
                         name: "Modérateur",
-                        value: `<@${moderatorDiscordId}>`,
+                        value: `<@${moderatorDiscordId}> (${authorPseudo})`,
                         inline: true,
                       },
                       { name: "Type", value: actionType, inline: true }
                     )
-                    .setFooter({ text: `Suivi pendant 2 heures.` });
+                    .setFooter({ text: `Vérification finale dans 2 heures.` })
+                    .setTimestamp(alertTime);
 
-                  await adminChannel.send({
-                    content: `Alerte Admin : <@${moderatorDiscordId}>`,
-                    embeds: [adminEmbed],
-                  });
+                  await adminChannel.send({ embeds: [adminEmbed] });
+                  console.log(
+                    `[DBG LOG] Confirmation admin envoyée dans #${adminChannel.name}.`
+                  );
+                } else {
+                  console.warn(
+                    `[DBG LOG] ⚠️ Canal admin (${adminAlertChannelId}) introuvable.`
+                  );
                 }
-              } // 5d. NOUVEAU : Planification de la vérification finale (2 heures)
-
+              } else {
+                console.log(`[DBG LOG] Aucun canal d'alerte admin configuré.`);
+              }
               const auditTimeoutId = setTimeout(async () => {
                 auditChecks.delete(message.id);
                 await checkFinalSanctionStatus(
@@ -500,30 +507,50 @@ async function handleLogSanctionEmbed(message, logChannelId) {
                   adminAlertChannelId
                 );
               }, finalCheckTimeMs);
-
               auditChecks.set(message.id, auditTimeoutId);
+              console.log(
+                `[DBG AUDIT] Vérification finale planifiée dans ${
+                  finalCheckTimeMs / (60 * 60 * 1000)
+                } heures.`
+              );
             } else {
               console.warn(
                 `[DBG LOG] ❌ Modérateur Discord trouvé (${moderatorDiscordId}) mais membre introuvable dans la guilde.`
               );
+              if (adminAlertChannelId) {
+                const adminChannel = await message.guild.channels
+                  .fetch(adminAlertChannelId)
+                  .catch(() => null);
+                if (adminChannel) {
+                  await adminChannel.send(
+                    `🚨 **Erreur d'Audit:** Impossible de trouver le membre Discord (<@${moderatorDiscordId}>) lié au pseudo Roblox **${authorPseudo}** pour la sanction sur **${targetPseudo}** (Log ID: ${message.id}).`
+                  );
+                }
+              }
             }
           } else {
             console.warn(
-              `[DBG LOG] ❌ Modérateur Discord non trouvé dans la table 'roblox_to_discord' pour: ${authorPseudo}.`
+              `[DBG LOG] ❌ Modérateur Discord non trouvé pour: ${authorPseudo}. Impossible d'envoyer l'alerte.`
             );
+            if (adminAlertChannelId) {
+              const adminChannel = await message.guild.channels
+                .fetch(adminAlertChannelId)
+                .catch(() => null);
+              if (adminChannel) {
+                await adminChannel.send(
+                  `🚨 **Erreur d'Audit:** Impossible de trouver le modérateur Discord lié au pseudo Roblox **${authorPseudo}** pour la sanction sur **${targetPseudo}** (Log ID: ${message.id}). Veuillez vérifier la liaison via /lier-moderateur.`
+                );
+              }
+            }
           }
         } else {
           console.log(
-            `[DBG LOG] ✅ Sanction pour ${targetPseudo} enregistrée correctement.`
-          ); // NOUVEAU : Si la sanction a été enregistrée, on vérifie si elle était en suivi d'audit et on la résout
-          if (auditChecks.has(message.id)) {
-            clearTimeout(auditChecks.get(message.id));
-            auditChecks.delete(message.id);
-          }
+            `[DBG LOG] ✅ Sanction pour ${targetPseudo} enregistrée correctement avant l'alerte.`
+          );
         }
       } catch (error) {
         console.error(
-          `[DBG LOG] ❌ ERREUR IRRÉCUPÉRABLE lors de la vérification de la sanction pour ${targetPseudo}:`,
+          `[DBG LOG] ❌ ERREUR IRRÉCUPÉRABLE lors de la vérification initiale (4h) pour ${targetPseudo}:`,
           error
         );
       }
@@ -541,7 +568,7 @@ client.once("ready", async () => {
   try {
     await client.application.commands.set(
       client.commands.map((command) => command.data),
-      GUILD_ID_FOR_COMMANDS // Utilisation de l'ID pour l'enregistrement instantané
+      GUILD_ID_FOR_COMMANDS
     );
     console.log("Commandes enregistrées sur le serveur de dev !");
   } catch (error) {
@@ -555,7 +582,6 @@ client.once("ready", async () => {
 });
 
 client.on("messageCreate", async (message) => {
-  // --- 🚨 LOG 0: DÉBUT DE LA FONCTION ---
   if (message.content) {
     console.log(
       `[DBG MESSAGE] Message reçu (Auteur: ${
@@ -570,7 +596,7 @@ client.on("messageCreate", async (message) => {
   ) {
     await message.react("✅");
     await message.react("❌");
-  } // --- VÉRIFICATION NON BOT/GUILDE ---
+  }
 
   if (message.author.bot || !message.guild) {
     if (message.author.bot) {
@@ -580,14 +606,14 @@ client.on("messageCreate", async (message) => {
     }
     if (!message.guild) {
       console.log(`[DBG MESSAGE] Message hors guilde (DM). Sortie précoce.`);
-    } // NOTE: On ne return pas ici car le message peut être un embed de log posté par un autre bot. // On continue pour vérifier les logs de sanction ci-dessous.
-  } // On doit absolument continuer pour le bloc de sanction si c'est un BOT
+    }
+  }
 
-  if (!message.guild) return; // Si pas de guilde, on peut s'arrêter
+  if (!message.guild) return;
 
   const guildId = message.guild.id;
   const discordId = message.author.id;
-  const now = Date.now(); // ✅ CORRECTION FINALE: Utilise Date.now() // --- LOGIQUE ANTI-SPAM (Nécessite que l'auteur ne soit pas un bot) ---
+  const now = Date.now();
 
   if (!message.author.bot) {
     try {
@@ -712,7 +738,7 @@ client.on("messageCreate", async (message) => {
         "Erreur lors de la lecture de la configuration anti-spam :",
         err
       );
-    } // --- LOGIQUE XP ---
+    }
 
     try {
       if (!global.lastMessageTimestamps) global.lastMessageTimestamps = {};
@@ -778,10 +804,9 @@ client.on("messageCreate", async (message) => {
     } catch (err) {
       console.error("Erreur dans le système d'XP :", err);
     }
-  } // Fin du bloc if (!message.author.bot) // --- DÉBUT LOGIQUE SANCTIONS (PEUT ÊTRE DÉCLENCHÉE PAR UN BOT OU UN HUMAIN) ---
+  }
 
   try {
-    // --- LOG 1: TENTATIVE DE LECTURE DB ---
     console.log(
       `[DBG SANCTION] Tentative de lecture config pour Guild ID: ${guildId}`
     );
@@ -789,7 +814,7 @@ client.on("messageCreate", async (message) => {
     const [sanctionConfigRows] = await db.execute(
       "SELECT channel_ids, embed_channel_id, log_channel_id, admin_alert_channel_id FROM sanction_config WHERE guild_id = ?",
       [message.guild.id]
-    ); // --- LOG 2: RÉSULTAT LECTURE DB ---
+    );
 
     if (sanctionConfigRows.length === 0) {
       console.log(
@@ -799,7 +824,7 @@ client.on("messageCreate", async (message) => {
     }
 
     console.log("[DBG SANCTION] ✅ Configuration de sanction trouvée.");
-    const config = sanctionConfigRows[0]; // LOGS DE DÉBOGAGE : AFFICHAGE DES IDs
+    const config = sanctionConfigRows[0];
 
     const logChannelId = config.log_channel_id;
     if (logChannelId) {
@@ -809,20 +834,20 @@ client.on("messageCreate", async (message) => {
       console.log(
         `[DBG SANCTION] ❌ Log Channel ID non configuré (null ou vide).`
       );
-    } // --- SURVEILLANCE DES LOGS EXTERNES (Kick/Ban Embed) ---
+    }
 
     if (logChannelId && message.channel.id === logChannelId) {
       if (message.embeds.length > 0) {
         console.log(
           "[DBG SANCTION] 🟢 Message détecté dans le canal de surveillance. Traitement de l'embed..."
-        ); // L'appel à handleLogSanctionEmbed contient les logs de vérification de champs
+        );
         await handleLogSanctionEmbed(message, config.log_channel_id);
       } else {
         console.log(
           "[DBG SANCTION] 🟠 Message détecté dans le canal de surveillance mais n'est PAS un embed."
         );
       }
-    } // --- ENREGISTREMENT DES SANCTIONS MANUELLES (Vérification des canaux de saisie) --- // Cette logique ne devrait être exécutée que par des utilisateurs, pas par des bots
+    }
 
     if (message.author.bot) return;
 
@@ -878,7 +903,7 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    const dateApplication = message.createdAt; // CORRECTION DE L'ESPACE DANS LE NOM DE LA TABLE
+    const dateApplication = message.createdAt;
 
     await db.execute(
       `INSERT INTO sanctions (guild_id, punisher_id, pseudo, raison, duration, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
