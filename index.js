@@ -49,7 +49,7 @@ async function initDatabase() {
     await db.execute(
       `CREATE TABLE IF NOT EXISTS user_roblox (discord_id VARCHAR(255) PRIMARY KEY, roblox_username VARCHAR(255), roblox_id VARCHAR(255))`
     );
-    
+
     await db.execute(
       `CREATE TABLE IF NOT EXISTS sanction_config (
             guild_id VARCHAR(255) PRIMARY KEY,
@@ -214,7 +214,7 @@ async function handleLogSanctionEmbed(message, logChannelId) {
     const isKick = action.includes("kicked");
     const actionType = isKick ? "Kick" : "Ban";
     const actionTypeDb = isKick ? "Kick" : "Permanent";
-    const checkTimeMs = 20 * 60 * 1000;
+    const checkTimeMs = 1 * 60 * 1000;
 
     const checkKey = `${targetPseudo}-${actionType}-${message.id}`;
     const guildId = message.guild.id;

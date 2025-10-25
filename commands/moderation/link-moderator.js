@@ -7,7 +7,7 @@ module.exports = {
     .setDescription(
       "Lie un utilisateur Discord à son pseudo Roblox pour le système de sanctions."
     )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .addUserOption((option) =>
       option
         .setName("utilisateur")
@@ -37,15 +37,13 @@ module.exports = {
         [robloxPseudo, discordId]
       );
 
-      const isNew = result.affectedRows === 1;
-
       let message;
       if (result.affectedRows === 1) {
-        message = `✅ Liaison créée :\nDiscord: **${user.tag}** (<@${discordId}>) est maintenant lié au pseudo Roblox: **${robloxPseudo}**.`;
+        message = `✅ Liaison créée :\nDiscord: **${user.tag}** (<@${discordId}>) est lié au pseudo Roblox: **${robloxPseudo}**.`;
       } else if (result.affectedRows === 2) {
         message = `🔄 Liaison mise à jour :\nLe pseudo Roblox **${robloxPseudo}** est maintenant lié à l'utilisateur Discord: **${user.tag}** (<@${discordId}>).`;
       } else {
-        message = `✅ Liaison confirmée :\n**${robloxPseudo}** est déjà lié à <@${discordId}>. Aucune modification nécessaire.`;
+        message = `✅ Liaison confirmée :\n**${robloxPseudo}** est déjà lié à <@${discordId}>.`;
       }
 
       return interaction.editReply({
@@ -55,7 +53,7 @@ module.exports = {
     } catch (error) {
       console.error("Erreur lors de la liaison modérateur/roblox :", error);
       return interaction.editReply({
-        content: `❌ Une erreur est survenue lors de la tentative de liaison. Vérifiez la console et assurez-vous que la table \`roblox_to_discord\` existe.`,
+        content: `❌ Une erreur est survenue lors de la tentative de liaison.`,
         ephemeral: true,
       });
     }
